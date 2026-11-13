@@ -607,3 +607,49 @@
     -fx-font-size: 11px;
     -fx-line-spacing: 3px;
 }
+
+.analyzer-content {
+    -fx-background-color: #0b1020;
+}
+
+.analyzer-panel,
+.analyzer-result-panel {
+    -fx-background-color: #10182b;
+    -fx-background-radius: 14;
+    -fx-border-color: #202b42;
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+}
+
+.analyzer-code-editor {
+    -fx-control-inner-background: #0c1426;
+    -fx-text-fill: #d7def0;
+    -fx-highlight-fill: #4947b8;
+    -fx-highlight-text-fill: white;
+    -fx-prompt-text-fill: #65728b;
+    -fx-font-family: "Consolas", "Courier New", monospace;
+    -fx-font-size: 12px;
+    -fx-background-color: #0c1426;
+    -fx-background-radius: 9;
+    -fx-border-color: #293650;
+    -fx-border-radius: 9;
+}
+
+.analyzer-code-editor .content {
+    -fx-background-color: #0c1426;
+}
+
+.analyzer-result-text {
+    -fx-text-fill: #aab5cb;
+    -fx-font-size: 11px;
+    -fx-line-spacing: 3px;
+}
+
+.analyzer-status {
+    -fx-text-fill: #8d98af;
+    -fx-font-size: 11px;
+}
+
+.progress-indicator {
+    -fx-progress-color: #8d89ff;
+}

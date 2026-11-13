@@ -4,6 +4,7 @@ import com.algovision.controller.GraphVisualizerController;
 import com.algovision.controller.PathfindingController;
 import com.algovision.controller.AlgorithmRaceController;
 import com.algovision.controller.SortingVisualizerController;
+import com.algovision.controller.AiCodeAnalyzerController;
 
 import java.util.Objects;
 
@@ -28,10 +29,12 @@ public class MainApp extends Application {
     private Button graphNavButton;
     private Button pathfindingNavButton;
     private Button raceNavButton;
+    private Button analyzerNavButton;
     private SortingVisualizerController sortingController;
     private GraphVisualizerController graphController;
     private PathfindingController pathfindingController;
     private AlgorithmRaceController raceController;
+    private AiCodeAnalyzerController analyzerController;
 
     @Override
     public void start(Stage stage) {
@@ -41,6 +44,7 @@ public class MainApp extends Application {
         graphController = new GraphVisualizerController();
         pathfindingController = new PathfindingController();
         raceController = new AlgorithmRaceController();
+        analyzerController = new AiCodeAnalyzerController();
         root.setLeft(createSidebar());
         root.setCenter(createDashboard());
 
@@ -82,13 +86,15 @@ public class MainApp extends Application {
         graphNavButton.setOnAction(event -> showGraphVisualizer());
         pathfindingNavButton.setOnAction(event -> showPathfinding());
         raceNavButton.setOnAction(event -> showAlgorithmRace());
+        analyzerNavButton = createNavButton("AI Code Analyzer", false);
+        analyzerNavButton.setOnAction(event -> showAiCodeAnalyzer());
         navigation.getChildren().addAll(
                 dashboardNavButton,
                 sortingNavButton,
                 graphNavButton,
                 pathfindingNavButton,
                 raceNavButton,
-                createNavButton("AI Code Analyzer", false));
+                analyzerNavButton);
 
         Region spacer = new Region();
         VBox.setVgrow(spacer, Priority.ALWAYS);
@@ -141,12 +147,22 @@ public class MainApp extends Application {
         setSelectedNavigation(raceNavButton);
     }
 
+    private void showAiCodeAnalyzer() {
+        sortingController.pause();
+        graphController.pause();
+        pathfindingController.pause();
+        raceController.pause();
+        root.setCenter(analyzerController.getView());
+        setSelectedNavigation(analyzerNavButton);
+    }
+
     private void setSelectedNavigation(Button selectedButton) {
         dashboardNavButton.getStyleClass().remove("selected");
         sortingNavButton.getStyleClass().remove("selected");
         graphNavButton.getStyleClass().remove("selected");
         pathfindingNavButton.getStyleClass().remove("selected");
         raceNavButton.getStyleClass().remove("selected");
+        analyzerNavButton.getStyleClass().remove("selected");
         if (!selectedButton.getStyleClass().contains("selected")) {
             selectedButton.getStyleClass().add("selected");
         }
