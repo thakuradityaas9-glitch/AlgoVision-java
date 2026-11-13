@@ -1,6 +1,7 @@
 package com.algovision;
 
 import com.algovision.controller.GraphVisualizerController;
+import com.algovision.controller.PathfindingController;
 import com.algovision.controller.SortingVisualizerController;
 
 import java.util.Objects;
@@ -24,8 +25,10 @@ public class MainApp extends Application {
     private Button dashboardNavButton;
     private Button sortingNavButton;
     private Button graphNavButton;
+    private Button pathfindingNavButton;
     private SortingVisualizerController sortingController;
     private GraphVisualizerController graphController;
+    private PathfindingController pathfindingController;
 
     @Override
     public void start(Stage stage) {
@@ -33,6 +36,7 @@ public class MainApp extends Application {
         root.getStyleClass().add("app-root");
         sortingController = new SortingVisualizerController();
         graphController = new GraphVisualizerController();
+        pathfindingController = new PathfindingController();
         root.setLeft(createSidebar());
         root.setCenter(createDashboard());
 
@@ -67,14 +71,16 @@ public class MainApp extends Application {
         dashboardNavButton = createNavButton("Dashboard", true);
         sortingNavButton = createNavButton("Sorting Visualizer", false);
         graphNavButton = createNavButton("Graph Visualizer", false);
+        pathfindingNavButton = createNavButton("Pathfinding", false);
         dashboardNavButton.setOnAction(event -> showDashboard());
         sortingNavButton.setOnAction(event -> showSortingVisualizer());
         graphNavButton.setOnAction(event -> showGraphVisualizer());
+        pathfindingNavButton.setOnAction(event -> showPathfinding());
         navigation.getChildren().addAll(
                 dashboardNavButton,
                 sortingNavButton,
                 graphNavButton,
-                createNavButton("Pathfinding", false),
+                pathfindingNavButton,
                 createNavButton("AI Code Analyzer", false));
 
         Region spacer = new Region();
@@ -90,26 +96,37 @@ public class MainApp extends Application {
     private void showDashboard() {
         sortingController.pause();
         graphController.pause();
+        pathfindingController.pause();
         root.setCenter(createDashboard());
         setSelectedNavigation(dashboardNavButton);
     }
 
     private void showSortingVisualizer() {
         graphController.pause();
+        pathfindingController.pause();
         root.setCenter(sortingController.getView());
         setSelectedNavigation(sortingNavButton);
     }
 
     private void showGraphVisualizer() {
         sortingController.pause();
+        pathfindingController.pause();
         root.setCenter(graphController.getView());
         setSelectedNavigation(graphNavButton);
+    }
+
+    private void showPathfinding() {
+        sortingController.pause();
+        graphController.pause();
+        root.setCenter(pathfindingController.getView());
+        setSelectedNavigation(pathfindingNavButton);
     }
 
     private void setSelectedNavigation(Button selectedButton) {
         dashboardNavButton.getStyleClass().remove("selected");
         sortingNavButton.getStyleClass().remove("selected");
         graphNavButton.getStyleClass().remove("selected");
+        pathfindingNavButton.getStyleClass().remove("selected");
         if (!selectedButton.getStyleClass().contains("selected")) {
             selectedButton.getStyleClass().add("selected");
         }

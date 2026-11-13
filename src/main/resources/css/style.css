@@ -426,3 +426,104 @@
     -fx-background-color: #303b54;
     -fx-background-radius: 8;
 }
+
+.pathfinding-content {
+    -fx-background-color: #0b1020;
+}
+
+.pathfinding-grid-panel,
+.pathfinding-info-panel {
+    -fx-background-color: #10182b;
+    -fx-background-radius: 14;
+    -fx-border-color: #202b42;
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+}
+
+.pathfinding-grid {
+    -fx-background-color: #0c1426;
+    -fx-background-radius: 10;
+    -fx-padding: 7px;
+}
+
+.pathfinding-cell {
+    -fx-background-radius: 2;
+    -fx-border-color: #26334c;
+    -fx-border-width: 0.5;
+    -fx-cursor: crosshair;
+}
+
+.pathfinding-cell.path-cell-empty,
+.pathfinding-legend-swatch.path-cell-empty {
+    -fx-background-color: #172238;
+}
+
+.pathfinding-cell.path-cell-start,
+.pathfinding-legend-swatch.path-cell-start {
+    -fx-background-color: #2fb889;
+}
+
+.pathfinding-cell.path-cell-end,
+.pathfinding-legend-swatch.path-cell-end {
+    -fx-background-color: #e56776;
+}
+
+.pathfinding-cell.path-cell-wall,
+.pathfinding-legend-swatch.path-cell-wall {
+    -fx-background-color: #060a13;
+    -fx-border-color: #060a13;
+}
+
+.pathfinding-cell.path-cell-open,
+.pathfinding-legend-swatch.path-cell-open {
+    -fx-background-color: #355b82;
+}
+
+.pathfinding-cell.path-cell-current,
+.pathfinding-legend-swatch.path-cell-current {
+    -fx-background-color: #f0a64b;
+}
+
+.pathfinding-cell.path-cell-neighbor,
+.pathfinding-legend-swatch.path-cell-neighbor {
+    -fx-background-color: #42b8d0;
+}
+
+.pathfinding-cell.path-cell-explored,
+.pathfinding-legend-swatch.path-cell-explored {
+    -fx-background-color: #247e83;
+}
+
+.pathfinding-cell.path-cell-final,
+.pathfinding-legend-swatch.path-cell-final {
+    -fx-background-color: #8056dc;
+}
+
+.pathfinding-legend-swatch {
+    -fx-min-width: 12px;
+    -fx-min-height: 12px;
+    -fx-pref-width: 12px;
+    -fx-pref-height: 12px;
+    -fx-max-width: 12px;
+    -fx-max-height: 12px;
+    -fx-background-radius: 3;
+}
+
+.pathfinding-legend-label {
+    -fx-text-fill: #929db3;
+    -fx-font-size: 9px;
+}
+
+.pathfinding-info-panel {
+    -fx-padding: 12px 14px;
+}
+
+.pathfinding-info-text,
+.pathfinding-step-details {
+    -fx-text-fill: #aab5cb;
+    -fx-font-size: 11px;
+}
+
+.pathfinding-step-details {
+    -fx-padding: 0 2px;
+}
