@@ -19,7 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class GeminiServiceTest {
+class GroqServiceTest {
     private static final String ANALYSIS_JSON = """
             {
               "complexityAnalysis": {
@@ -70,9 +70,9 @@ class GeminiServiceTest {
         responseCode = 200;
         responseBody = wrap(ANALYSIS_JSON);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/generateContent", exchange -> {
+        server.createContext("/chat/completions", exchange -> {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            requestApiKey.set(exchange.getRequestHeaders().getFirst("x-goog-api-key"));
+            requestApiKey.set(exchange.getRequestHeaders().getFirst("Authorization"));
             requestQuery.set(exchange.getRequestURI().getRawQuery());
             byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(responseCode, body.length);
@@ -101,7 +101,10 @@ class GeminiServiceTest {
         assertTrue(requestBody.get().contains(cppCode));
         assertTrue(requestBody.get().contains("C++"));
         assertTrue(requestBody.get().contains("Searching"));
-        assertEquals("test-key", requestApiKey.get());
+        assertTrue(requestBody.get().contains("openai/gpt-oss-120b"));
+        assertTrue(requestBody.get().contains("\"messages\""));
+        assertTrue(requestBody.get().contains("\"response_format\":{\"type\":\"json_object\"}"));
+        assertEquals("Bearer test-key", requestApiKey.get());
         assertNull(requestQuery.get());
     }
 
@@ -114,13 +117,33 @@ class GeminiServiceTest {
     }
 
     @Test
-    void reportsMissingApiKeyWithoutSendingRequest() {
-        GeminiService missingKey = new GeminiService(HttpClient.newHttpClient(),
-                endpoint(), "PASTE_YOUR_API_KEY_HERE");
+    void acceptsConfiguredDummyKey() {
+        service().analyze("int main() {}", "C++", "Other").join();
+        assertEquals("Bearer test-key", requestApiKey.get());
+    }
+
+    @Test
+    void rejectsPlaceholderKeyWithoutSendingRequest() {
+        assertRejectedApiKey("PASTE_GROQ_API_KEY_HERE");
+    }
+
+    @Test
+    void rejectsEmptyAndBlankKeysWithoutSendingRequest() {
+        assertRejectedApiKey("");
+        assertRejectedApiKey("   ");
+    }
+
+    @Test
+    void rejectsNullKeyWithoutSendingRequest() {
+        assertRejectedApiKey(null);
+    }
+
+    private void assertRejectedApiKey(String apiKey) {
+        GroqService missingKey = new GroqService(HttpClient.newHttpClient(), endpoint(), apiKey);
         CompletionException failure = assertThrows(CompletionException.class,
                 () -> missingKey.analyze("int main() {}", "C++", "Other").join());
-        assertTrue(failure.getCause().getMessage().contains("Add your Gemini API key"));
-        assertEquals(null, requestBody.get());
+        assertTrue(failure.getCause().getMessage().contains("Add your Groq API key"));
+        assertNull(requestBody.get());
     }
 
     @Test
@@ -138,8 +161,8 @@ class GeminiServiceTest {
     }
 
     @Test
-    void reportsMissingGeminiAnalysisText() {
-        responseBody = "{\"candidates\":[]}";
+    void reportsMissingGroqAnalysisText() {
+        responseBody = "{\"choices\":[]}";
         CompletionException failure = assertThrows(CompletionException.class,
                 () -> service().analyze("code", "Java", "Arrays").join());
         assertTrue(failure.getCause().getMessage().contains("no analysis text"));
@@ -149,21 +172,34 @@ class GeminiServiceTest {
     void requestDoesNotAddApiKeyToRequestBody() {
         service().analyze("sample", "C++", "Sorting").join();
         assertFalse(requestBody.get().contains("test-key"));
-        assertEquals("test-key", requestApiKey.get());
+        assertEquals("Bearer test-key", requestApiKey.get());
         assertNull(requestQuery.get());
     }
 
-    private GeminiService service() {
-        return new GeminiService(HttpClient.newHttpClient(), endpoint(), "test-key");
+    @Test
+    void reportsNetworkDisconnection() {
+        URI unavailableEndpoint = endpoint();
+        server.stop(0);
+        server = null;
+        GroqService disconnected = new GroqService(HttpClient.newHttpClient(),
+                unavailableEndpoint, "test-key");
+
+        CompletionException failure = assertThrows(CompletionException.class,
+                () -> disconnected.analyze("code", "C++", "Graphs").join());
+        assertTrue(failure.getCause().getMessage().contains("Could not connect to Groq"));
+    }
+
+    private GroqService service() {
+        return new GroqService(HttpClient.newHttpClient(), endpoint(), "test-key");
     }
 
     private URI endpoint() {
-        return URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/generateContent");
+        return URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/chat/completions");
     }
 
     private String wrap(String text) {
-        return "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":"
+        return "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":"
                 + com.fasterxml.jackson.databind.json.JsonMapper.builder().build()
-                .valueToTree(text).toString() + "}]}}]}";
+                .valueToTree(text).toString() + "}}]}";
     }
 }

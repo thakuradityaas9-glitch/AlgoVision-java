@@ -14,7 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-public final class GeminiService {
+public final class GroqService {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String ANALYSIS_INSTRUCTIONS = """
             You are an experienced data structures and algorithms code reviewer.
@@ -62,12 +62,12 @@ public final class GeminiService {
     private final URI endpoint;
     private final String apiKey;
 
-    public GeminiService() {
+    public GroqService() {
         this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build(),
-                URI.create(GeminiConfig.API_ENDPOINT), GeminiConfig.API_KEY);
+                URI.create(GroqConfig.API_ENDPOINT), GroqConfig.API_KEY);
     }
 
-    GeminiService(HttpClient httpClient, URI endpoint, String apiKey) {
+    GroqService(HttpClient httpClient, URI endpoint, String apiKey) {
         this.httpClient = httpClient;
         this.endpoint = endpoint;
         this.apiKey = apiKey;
@@ -75,35 +75,40 @@ public final class GeminiService {
 
     public CompletableFuture<AnalysisResponse> analyze(String code, String language, String category) {
         if (apiKey == null || apiKey.isBlank()
-                || "PASTE_YOUR_API_KEY_HERE".equals(apiKey.trim())) {
+                || "PASTE_GROQ_API_KEY_HERE".equals(apiKey.trim())) {
             return CompletableFuture.failedFuture(
-                    new GeminiException(ErrorType.MISSING_API_KEY,
-                            "Add your Gemini API key to GeminiConfig.java before analyzing code."));
+                    new GroqException(ErrorType.MISSING_API_KEY,
+                            "Add your Groq API key to GroqConfig.java before analyzing code."));
         }
         try {
             HttpRequest request = HttpRequest.newBuilder(endpoint)
                     .timeout(Duration.ofSeconds(90))
                     .header("Content-Type", "application/json")
-                    .header("x-goog-api-key", apiKey)
+                    .header("Authorization", "Bearer " + apiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(createRequestBody(code, language, category)))
                     .build();
             return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                     .thenApply(this::parseHttpResponse)
                     .exceptionallyCompose(error -> CompletableFuture.failedFuture(mapFailure(error)));
         } catch (JsonProcessingException e) {
-            return CompletableFuture.failedFuture(new GeminiException(
-                    ErrorType.MALFORMED_RESPONSE, "Could not prepare the Gemini request.", e));
+            return CompletableFuture.failedFuture(new GroqException(
+                    ErrorType.MALFORMED_RESPONSE, "Could not prepare the Groq request.", e));
         }
     }
 
     private String createRequestBody(String code, String language, String category)
             throws JsonProcessingException {
         ObjectNode root = JSON.createObjectNode();
-        root.putArray("contents").addObject()
-                .putArray("parts").addObject()
-                .put("text", ANALYSIS_INSTRUCTIONS + "\n\nLanguage: " + language
-                        + "\nDSA category: " + category + "\nSource code:\n" + code);
-        root.putObject("generationConfig").put("responseMimeType", "application/json");
+        root.put("model", GroqConfig.MODEL);
+        var messages = root.putArray("messages");
+        messages.addObject()
+                .put("role", "system")
+                .put("content", ANALYSIS_INSTRUCTIONS);
+        messages.addObject()
+                .put("role", "user")
+                .put("content", "Language: " + language + "\nDSA category: " + category
+                        + "\nSource code:\n" + code);
+        root.putObject("response_format").put("type", "json_object");
         return JSON.writeValueAsString(root);
     }
 
@@ -112,58 +117,58 @@ public final class GeminiService {
             ErrorType type = response.statusCode() == 429
                     ? ErrorType.RATE_LIMIT : ErrorType.API_ERROR;
             String message = response.statusCode() == 429
-                    ? "Gemini rate limit reached. Wait a little and try again."
-                    : "Gemini API returned HTTP " + response.statusCode() + ". Check your API key and request.";
-            throw new GeminiException(type, message);
+                    ? "Groq rate limit reached. Wait a little and try again."
+                    : "Groq API returned HTTP " + response.statusCode() + ". Check your API key and request.";
+            throw new GroqException(type, message);
         }
         try {
             JsonNode root = JSON.readTree(response.body());
-            JsonNode text = root.path("candidates").path(0).path("content").path("parts").path(0).path("text");
+            JsonNode text = root.path("choices").path(0).path("message").path("content");
             if (!text.isTextual()) {
-                throw new GeminiException(ErrorType.MALFORMED_RESPONSE,
-                        "Gemini returned no analysis text. Try again with a different prompt or code sample.");
+                throw new GroqException(ErrorType.MALFORMED_RESPONSE,
+                        "Groq returned no analysis text. Try again with a different prompt or code sample.");
             }
             return JSON.readValue(text.asText(), AnalysisResponse.class);
         } catch (JsonProcessingException e) {
-            throw new GeminiException(ErrorType.MALFORMED_RESPONSE,
-                    "Gemini returned an unreadable response. Please try again.", e);
+            throw new GroqException(ErrorType.MALFORMED_RESPONSE,
+                    "Groq returned an unreadable response. Please try again.", e);
         }
     }
 
-    private GeminiException mapFailure(Throwable error) {
+    private GroqException mapFailure(Throwable error) {
         Throwable cause = error;
         while ((cause instanceof CompletionException || cause instanceof java.util.concurrent.ExecutionException)
                 && cause.getCause() != null) {
             cause = cause.getCause();
         }
-        if (cause instanceof GeminiException geminiException) {
-            return geminiException;
+        if (cause instanceof GroqException groqException) {
+            return groqException;
         }
         if (cause instanceof IOException || cause instanceof java.net.ConnectException) {
-            return new GeminiException(ErrorType.NETWORK,
-                    "Could not connect to Gemini. Check your internet connection and try again.", cause);
+            return new GroqException(ErrorType.NETWORK,
+                    "Could not connect to Groq. Check your internet connection and try again.", cause);
         }
         if (cause instanceof java.net.http.HttpTimeoutException) {
-            return new GeminiException(ErrorType.NETWORK,
-                    "Gemini took too long to respond. Please try again.", cause);
+            return new GroqException(ErrorType.NETWORK,
+                    "Groq took too long to respond. Please try again.", cause);
         }
-        return new GeminiException(ErrorType.API_ERROR,
-                "Gemini analysis failed. Please try again.", cause);
+        return new GroqException(ErrorType.API_ERROR,
+                "Groq analysis failed. Please try again.", cause);
     }
 
     enum ErrorType {
         MISSING_API_KEY, RATE_LIMIT, NETWORK, MALFORMED_RESPONSE, API_ERROR
     }
 
-    static final class GeminiException extends RuntimeException {
+    static final class GroqException extends RuntimeException {
         private final ErrorType type;
 
-        GeminiException(ErrorType type, String message) {
+        GroqException(ErrorType type, String message) {
             super(message);
             this.type = type;
         }
 
-        GeminiException(ErrorType type, String message, Throwable cause) {
+        GroqException(ErrorType type, String message, Throwable cause) {
             super(message, cause);
             this.type = type;
         }

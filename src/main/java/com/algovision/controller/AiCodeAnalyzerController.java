@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.algovision.ai.AnalysisResponse;
-import com.algovision.ai.GeminiService;
+import com.algovision.ai.GroqService;
 
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -55,11 +55,11 @@ public final class AiCodeAnalyzerController {
             }
             """;
 
-    private final GeminiService geminiService = new GeminiService();
+    private final GroqService groqService = new GroqService();
     private final ComboBox<String> languageChoice = new ComboBox<>();
     private final ComboBox<String> categoryChoice = new ComboBox<>();
     private final TextArea codeEditor = new TextArea();
-    private final Button analyzeButton = new Button("Analyze with Gemini");
+    private final Button analyzeButton = new Button("Analyze with Groq");
     private final Button clearButton = new Button("Clear");
     private final Button sampleButton = new Button("Load sample");
     private final ProgressIndicator loadingIndicator = new ProgressIndicator();
@@ -157,10 +157,10 @@ public final class AiCodeAnalyzerController {
             return;
         }
         setLoading(true);
-        statusLabel.setText("Sending your code to Gemini...");
+        statusLabel.setText("Sending your code to Groq...");
         statusLabel.getStyleClass().remove("error-message");
         resultSections.getChildren().clear();
-        geminiService.analyze(code, languageChoice.getValue(), categoryChoice.getValue())
+        groqService.analyze(code, languageChoice.getValue(), categoryChoice.getValue())
                 .whenComplete((analysis, error) -> Platform.runLater(() -> {
                     setLoading(false);
                     if (error != null) {
@@ -195,7 +195,7 @@ public final class AiCodeAnalyzerController {
 
     private void showError(String message) {
         statusLabel.setText(message == null || message.isBlank()
-                ? "Gemini analysis failed. Please try again." : message);
+                ? "Groq analysis failed. Please try again." : message);
         if (!statusLabel.getStyleClass().contains("error-message")) {
             statusLabel.getStyleClass().add("error-message");
         }
@@ -217,7 +217,7 @@ public final class AiCodeAnalyzerController {
     private void renderAnalysis(AnalysisResponse result) {
         resultSections.getChildren().clear();
         if (result == null) {
-            showError("Gemini returned an empty analysis. Please try again.");
+            showError("Groq returned an empty analysis. Please try again.");
             return;
         }
         AnalysisResponse.ComplexityAnalysis complexity = result.complexityAnalysis();
