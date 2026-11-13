@@ -69,7 +69,7 @@ public class GraphVisualizerController {
     private final Label frontierValue = new Label("--");
     private final Label shortestPathValue = new Label("--");
     private final Label messageValue = new Label("Add nodes on the canvas or generate a random graph.");
-    private final Button playButton = new Button("Play");
+    private final Button playButton = new Button("Start");
     private final Button pauseButton = new Button("Pause");
     private final Button resetButton = new Button("Reset");
     private final Button deleteNodeButton = new Button("Delete Selected Node");
@@ -700,6 +700,7 @@ public class GraphVisualizerController {
 
     private void updateButtons() {
         boolean running = "Running".equals(statusValue.getText());
+        playButton.setText("Paused".equals(statusValue.getText()) ? "Resume" : "Start");
         boolean hasStartNode = startNodeChoice.getValue() != null
                 && graph.containsNode(startNodeChoice.getValue());
         boolean needsDestination = selectedAlgorithm instanceof DijkstraShortestPath;
