@@ -1,0 +1,38 @@
+# Maven build output
+target/
+dependency-reduced-pom.xml
+pom.xml.versionsBackup
+release.properties
+
+# Compiled files and packaged artifacts
+*.class
+*.jar
+*.war
+*.ear
+
+# Logs
+*.log
+logs/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# IDE metadata and workspace files
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.metadata/
+.factorypath
+
+# Editor and operating-system temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
