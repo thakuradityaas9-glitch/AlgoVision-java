@@ -527,3 +527,83 @@
 .pathfinding-step-details {
     -fx-padding: 0 2px;
 }
+
+.race-content {
+    -fx-background-color: #0b1020;
+}
+
+.race-lane-panel {
+    -fx-background-color: #10182b;
+    -fx-background-radius: 14;
+    -fx-border-color: #202b42;
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+}
+
+.race-algorithm-name {
+    -fx-text-fill: #f0f2fc;
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+}
+
+.race-stat-card {
+    -fx-background-color: #0c1426;
+    -fx-background-radius: 9;
+    -fx-border-color: #202b42;
+    -fx-border-radius: 9;
+    -fx-padding: 9px 8px;
+}
+
+.race-stat-value {
+    -fx-text-fill: #f0f2fc;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+}
+
+.race-complexity {
+    -fx-text-fill: #aab5cb;
+    -fx-font-size: 10px;
+}
+
+.race-timing-note {
+    -fx-text-fill: #828ea5;
+    -fx-font-size: 10px;
+}
+
+.race-status-strip {
+    -fx-background-color: #10182b;
+    -fx-background-radius: 9;
+    -fx-padding: 9px 12px;
+}
+
+.race-status-strip > .label:first-child {
+    -fx-text-fill: #71809b;
+    -fx-font-size: 9px;
+    -fx-font-weight: bold;
+}
+
+.race-status-strip > .label:last-child {
+    -fx-text-fill: #d7def0;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.race-result-banner {
+    -fx-background-color: linear-gradient(to right, #19294a, #30265e);
+    -fx-background-radius: 13;
+    -fx-border-color: #6d68f5;
+    -fx-border-radius: 13;
+    -fx-padding: 16px 18px;
+}
+
+.race-result-heading {
+    -fx-text-fill: #f3f5ff;
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+}
+
+.race-result-details {
+    -fx-text-fill: #c1c9de;
+    -fx-font-size: 11px;
+    -fx-line-spacing: 3px;
+}

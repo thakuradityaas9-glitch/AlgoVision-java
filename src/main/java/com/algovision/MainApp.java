@@ -2,6 +2,7 @@ package com.algovision;
 
 import com.algovision.controller.GraphVisualizerController;
 import com.algovision.controller.PathfindingController;
+import com.algovision.controller.AlgorithmRaceController;
 import com.algovision.controller.SortingVisualizerController;
 
 import java.util.Objects;
@@ -26,9 +27,11 @@ public class MainApp extends Application {
     private Button sortingNavButton;
     private Button graphNavButton;
     private Button pathfindingNavButton;
+    private Button raceNavButton;
     private SortingVisualizerController sortingController;
     private GraphVisualizerController graphController;
     private PathfindingController pathfindingController;
+    private AlgorithmRaceController raceController;
 
     @Override
     public void start(Stage stage) {
@@ -37,6 +40,7 @@ public class MainApp extends Application {
         sortingController = new SortingVisualizerController();
         graphController = new GraphVisualizerController();
         pathfindingController = new PathfindingController();
+        raceController = new AlgorithmRaceController();
         root.setLeft(createSidebar());
         root.setCenter(createDashboard());
 
@@ -72,15 +76,18 @@ public class MainApp extends Application {
         sortingNavButton = createNavButton("Sorting Visualizer", false);
         graphNavButton = createNavButton("Graph Visualizer", false);
         pathfindingNavButton = createNavButton("Pathfinding", false);
+        raceNavButton = createNavButton("Algorithm Race", false);
         dashboardNavButton.setOnAction(event -> showDashboard());
         sortingNavButton.setOnAction(event -> showSortingVisualizer());
         graphNavButton.setOnAction(event -> showGraphVisualizer());
         pathfindingNavButton.setOnAction(event -> showPathfinding());
+        raceNavButton.setOnAction(event -> showAlgorithmRace());
         navigation.getChildren().addAll(
                 dashboardNavButton,
                 sortingNavButton,
                 graphNavButton,
                 pathfindingNavButton,
+                raceNavButton,
                 createNavButton("AI Code Analyzer", false));
 
         Region spacer = new Region();
@@ -97,6 +104,7 @@ public class MainApp extends Application {
         sortingController.pause();
         graphController.pause();
         pathfindingController.pause();
+        raceController.pause();
         root.setCenter(createDashboard());
         setSelectedNavigation(dashboardNavButton);
     }
@@ -104,6 +112,7 @@ public class MainApp extends Application {
     private void showSortingVisualizer() {
         graphController.pause();
         pathfindingController.pause();
+        raceController.pause();
         root.setCenter(sortingController.getView());
         setSelectedNavigation(sortingNavButton);
     }
@@ -111,6 +120,7 @@ public class MainApp extends Application {
     private void showGraphVisualizer() {
         sortingController.pause();
         pathfindingController.pause();
+        raceController.pause();
         root.setCenter(graphController.getView());
         setSelectedNavigation(graphNavButton);
     }
@@ -118,8 +128,17 @@ public class MainApp extends Application {
     private void showPathfinding() {
         sortingController.pause();
         graphController.pause();
+        raceController.pause();
         root.setCenter(pathfindingController.getView());
         setSelectedNavigation(pathfindingNavButton);
+    }
+
+    private void showAlgorithmRace() {
+        sortingController.pause();
+        graphController.pause();
+        pathfindingController.pause();
+        root.setCenter(raceController.getView());
+        setSelectedNavigation(raceNavButton);
     }
 
     private void setSelectedNavigation(Button selectedButton) {
@@ -127,6 +146,7 @@ public class MainApp extends Application {
         sortingNavButton.getStyleClass().remove("selected");
         graphNavButton.getStyleClass().remove("selected");
         pathfindingNavButton.getStyleClass().remove("selected");
+        raceNavButton.getStyleClass().remove("selected");
         if (!selectedButton.getStyleClass().contains("selected")) {
             selectedButton.getStyleClass().add("selected");
         }
