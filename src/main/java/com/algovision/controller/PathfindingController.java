@@ -1,7 +1,32 @@
 package com.algovision.controller;
 
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.Font;
+import java.awt.GridLayout;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
+
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.DefaultListCellRenderer;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JSlider;
+import javax.swing.JTextArea;
+import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
+import javax.swing.Timer;
+import javax.swing.border.EmptyBorder;
 
 import com.algovision.pathfinding.algorithms.AStarSearch;
 import com.algovision.pathfinding.model.AStarEvent;
@@ -9,29 +34,20 @@ import com.algovision.pathfinding.model.AStarStep;
 import com.algovision.pathfinding.model.GridPosition;
 import com.algovision.pathfinding.model.PathfindingGrid;
 import com.algovision.pathfinding.model.PathfindingTool;
+import com.algovision.ui.AlgoVisionTheme;
 import com.algovision.visualization.PathfindingGridView;
 
-import javafx.animation.KeyFrame;
-import javafx.animation.Timeline;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.Node;
-import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.Slider;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
-import javafx.util.Duration;
-
-public final class PathfindingController {
+public final class PathfindingController extends JPanel {
+    private static final Color APP_BACKGROUND = AlgoVisionTheme.APP_BACKGROUND;
+    private static final Color PANEL_BACKGROUND = AlgoVisionTheme.PANEL_BACKGROUND;
+    private static final Color BORDER_COLOR = AlgoVisionTheme.BORDER;
+    private static final Color PRIMARY_TEXT = AlgoVisionTheme.TEXT_PRIMARY;
+    private static final Color BODY_TEXT = AlgoVisionTheme.TEXT_BODY;
+    private static final Color ACCENT_TEXT = AlgoVisionTheme.ACCENT;
     private static final int GRID_ROWS = 17;
     private static final int GRID_COLUMNS = 25;
     private static final double RANDOM_WALL_PROBABILITY = 0.24;
+    private static final int BASE_INTERVAL_MILLIS = 65;
 
     private final PathfindingGrid grid = new PathfindingGrid(
             GRID_ROWS,
@@ -40,223 +56,311 @@ public final class PathfindingController {
             new GridPosition(GRID_ROWS / 2, GRID_COLUMNS - 3));
     private final AStarSearch algorithm = new AStarSearch();
     private final PathfindingGridView gridView = new PathfindingGridView(grid);
-    private final ComboBox<PathfindingTool> toolChoice = new ComboBox<>();
-    private final Slider speedSlider = new Slider(0, 100, 60);
-    private final Label visitedValue = new Label("0");
-    private final Label pathLengthValue = new Label("--");
-    private final Label exploredValue = new Label("0");
-    private final Label statusValue = new Label("Ready");
-    private final Label stepDetailsValue = new Label("Choose a tool, then start A* to explore the grid.");
-    private final Label messageValue = new Label(
-            "Select a tool to place endpoints, draw walls, or erase walls. Wall drawing supports click and drag.");
-    private final Button startButton = new Button("Start");
-    private final Button pauseButton = new Button("Pause");
-    private final Button resumeButton = new Button("Resume");
-    private final Button resetButton = new Button("Reset");
-    private final Button clearGridButton = new Button("Clear Grid");
-    private final Button randomObstaclesButton = new Button("Random Obstacles");
+    private final JComboBox<PathfindingTool> toolChoice = new JComboBox<>();
+    private final JSlider speedSlider = new JSlider(0, 100, 60);
+    private final JLabel visitedValue = new JLabel("0");
+    private final JLabel pathLengthValue = new JLabel("--");
+    private final JLabel exploredValue = new JLabel("0");
+    private final JLabel statusValue = new JLabel("Ready");
+    private final JTextArea stepDetailsValue = createTextArea(
+            "Choose a tool, then start A* to explore the grid.", 1);
+    private final JTextArea messageValue = createTextArea(
+            "Select a tool to place endpoints, draw walls, or erase walls. "
+                    + "Wall drawing supports click and drag.", 2);
+    private final JButton startButton = new JButton("Start");
+    private final JButton pauseButton = new JButton("Pause");
+    private final JButton resumeButton = new JButton("Resume");
+    private final JButton resetButton = new JButton("Reset");
+    private final JButton clearGridButton = new JButton("Clear Grid");
+    private final JButton randomObstaclesButton = new JButton("Random Obstacles");
 
-    private final ScrollPane view;
     private PathfindingTool selectedTool = PathfindingTool.WALL;
     private List<AStarStep> steps = List.of();
     private int stepIndex;
     private AStarStep currentStep;
-    private Timeline timeline;
+    private AStarStep pathAnimationStep;
+    private List<GridPosition> pathToAnimate = List.of();
+    private int pathAnimationIndex;
+    private SwingWorker<List<AStarStep>, Void> stepWorker;
+    private Timer animationTimer;
+    private int generationId;
+    private int timerDelayMillis = intervalFor(speedSlider.getValue());
 
     public PathfindingController() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            throw new IllegalStateException(
+                    "Create the pathfinding workspace on the Swing event dispatch thread.");
+        }
+        setLayout(new BorderLayout());
+        setBackground(APP_BACKGROUND);
+        setBorder(new EmptyBorder(18, 22, 16, 22));
         gridView.setCellActionHandler(this::editCell);
-        view = createView();
+        configureControls();
+        add(createView(), BorderLayout.CENTER);
         renderGrid();
         updateStatistics();
         updateButtons();
     }
 
-    public Node getView() {
-        return view;
+    public JPanel getView() {
+        return this;
     }
 
     public void pause() {
-        if (timeline != null && "Running".equals(statusValue.getText())) {
-            timeline.pause();
+        if (isAnimationTimerRunning()) {
+            stopAnimationTimer();
             setStatus("Paused");
             setMessage("Search paused. Resume to continue or reset to start again.");
+            updateButtons();
+        } else if (stepWorker != null) {
+            cancelCurrentRun();
+            setStatus("Ready");
+            setMessage("Search preparation cancelled.");
             updateButtons();
         }
     }
 
-    private ScrollPane createView() {
-        VBox content = new VBox(16);
-        content.getStyleClass().add("pathfinding-content");
-        content.setPadding(new Insets(28, 34, 24, 34));
+    private JPanel createView() {
+        JPanel root = new JPanel(new BorderLayout(0, 12));
+        root.setOpaque(false);
+        root.add(createHeader(), BorderLayout.NORTH);
 
-        VBox introduction = new VBox(7);
-        Label eyebrow = new Label("PATHFINDING ALGORITHMS");
-        eyebrow.getStyleClass().add("eyebrow");
-        Label heading = new Label("A* Pathfinding Visualizer");
-        heading.getStyleClass().add("welcome-heading");
-        Label description = new Label(
-                "Watch A* explore a grid and find a shortest four-directional route around obstacles.");
-        description.getStyleClass().add("welcome-subtitle");
-        description.setWrapText(true);
-        introduction.getChildren().addAll(eyebrow, heading, description);
-
-        HBox statistics = new HBox(12,
-                createStatCard("VISITED CELLS", visitedValue),
-                createStatCard("PATH LENGTH", pathLengthValue),
-                createStatCard("EXPLORED NODES", exploredValue),
-                createStatCard("STATUS", statusValue));
-        statistics.setAlignment(Pos.CENTER);
-
-        VBox gridPanel = new VBox(10);
-        gridPanel.getStyleClass().add("pathfinding-grid-panel");
-        gridPanel.setPadding(new Insets(14));
-        HBox gridHeading = new HBox(10);
-        Label gridTitle = new Label("Grid workspace");
-        gridTitle.getStyleClass().add("panel-heading");
-        Region headingSpacer = createSpacer();
-        gridHeading.getChildren().addAll(gridTitle, headingSpacer);
-        gridPanel.getChildren().addAll(createLegend(), gridHeading, gridView);
-        VBox.setVgrow(gridView, Priority.ALWAYS);
-
-        VBox informationPanel = createInformationPanel();
-        stepDetailsValue.getStyleClass().add("pathfinding-step-details");
-        stepDetailsValue.setWrapText(true);
-        messageValue.getStyleClass().add("graph-message");
-        messageValue.setWrapText(true);
-        content.getChildren().addAll(
-                introduction,
-                createControls(),
-                statistics,
-                informationPanel,
-                gridPanel,
-                stepDetailsValue,
-                messageValue);
-        VBox.setVgrow(gridPanel, Priority.ALWAYS);
-
-        ScrollPane scrollPane = new ScrollPane(content);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.getStyleClass().add("content-scroll");
-        return scrollPane;
+        JPanel content = new JPanel(new BorderLayout(0, 12));
+        content.setOpaque(false);
+        content.add(createControls(), BorderLayout.NORTH);
+        content.add(createGridPanel(), BorderLayout.CENTER);
+        root.add(content, BorderLayout.CENTER);
+        root.add(createStatusArea(), BorderLayout.SOUTH);
+        return root;
     }
 
-    private VBox createControls() {
-        VBox panel = new VBox(12);
-        panel.getStyleClass().add("controls-card");
-        panel.setPadding(new Insets(14));
+    private JPanel createHeader() {
+        JPanel header = new JPanel(new BorderLayout(16, 0));
+        header.setOpaque(false);
+        JPanel titleBlock = new JPanel();
+        titleBlock.setOpaque(false);
+        titleBlock.setLayout(new BoxLayout(titleBlock, BoxLayout.Y_AXIS));
+        titleBlock.add(label("PATHFINDING ALGORITHMS", ACCENT_TEXT, Font.BOLD, 10));
+        titleBlock.add(Box.createVerticalStrut(4));
+        titleBlock.add(label("A* Pathfinding Visualizer", PRIMARY_TEXT, Font.BOLD, 25));
+        titleBlock.add(Box.createVerticalStrut(4));
+        titleBlock.add(label(
+                "Explore a four-directional grid using f(n) = g(n) + h(n) and Manhattan distance.",
+                BODY_TEXT, Font.PLAIN, 11));
+        header.add(titleBlock, BorderLayout.CENTER);
+        return header;
+    }
 
-        toolChoice.getItems().setAll(PathfindingTool.values());
-        toolChoice.getSelectionModel().select(PathfindingTool.WALL);
-        toolChoice.setMaxWidth(Double.MAX_VALUE);
-        toolChoice.setOnAction(event -> selectedTool = toolChoice.getValue());
+    private JPanel createControls() {
+        JPanel panel = cardPanel();
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER_COLOR),
+                new EmptyBorder(12, 14, 12, 14)));
 
-        clearGridButton.getStyleClass().add("secondary-button");
-        randomObstaclesButton.getStyleClass().add("secondary-button");
-        clearGridButton.setOnAction(event -> clearGrid());
-        randomObstaclesButton.setOnAction(event -> randomizeObstacles());
-        HBox toolRow = new HBox(10,
-                labeledControl("GRID TOOL", toolChoice),
-                createSpacer(),
-                clearGridButton,
-                randomObstaclesButton);
-        toolRow.setAlignment(Pos.BOTTOM_LEFT);
+        JPanel tools = new JPanel(new FlowLayout(FlowLayout.LEFT, 9, 0));
+        tools.setOpaque(false);
+        toolChoice.setPreferredSize(new Dimension(190, 34));
+        tools.add(labeledControl("GRID TOOL", toolChoice));
+        tools.add(clearGridButton);
+        tools.add(randomObstaclesButton);
 
-        startButton.getStyleClass().add("primary-button");
-        pauseButton.getStyleClass().add("secondary-button");
-        resumeButton.getStyleClass().add("secondary-button");
-        resetButton.getStyleClass().add("secondary-button");
-        startButton.setOnAction(event -> startSearch());
-        pauseButton.setOnAction(event -> pause());
-        resumeButton.setOnAction(event -> resume());
-        resetButton.setOnAction(event -> resetSearch());
+        JPanel playback = new JPanel();
+        playback.setOpaque(false);
+        playback.setLayout(new BoxLayout(playback, BoxLayout.X_AXIS));
+        playback.add(startButton);
+        playback.add(Box.createHorizontalStrut(7));
+        playback.add(pauseButton);
+        playback.add(Box.createHorizontalStrut(7));
+        playback.add(resumeButton);
+        playback.add(Box.createHorizontalStrut(7));
+        playback.add(resetButton);
+        playback.add(Box.createHorizontalGlue());
+        JLabel speedLabel = label("SPEED", new Color(0x8793aa), Font.BOLD, 9);
+        playback.add(speedLabel);
+        playback.add(Box.createHorizontalStrut(9));
+        playback.add(speedSlider);
+        speedSlider.setPreferredSize(new Dimension(132, 30));
+        speedSlider.setMaximumSize(new Dimension(160, 34));
 
-        Label speedLabel = new Label("SPEED");
-        speedLabel.getStyleClass().add("control-label");
-        speedSlider.setShowTickLabels(false);
-        speedSlider.setShowTickMarks(false);
-        speedSlider.setBlockIncrement(10);
-        speedSlider.setPrefWidth(150);
-        speedSlider.valueProperty().addListener((observable, oldValue, newValue) -> {
-            if (timeline != null && "Running".equals(statusValue.getText())) {
-                timeline.setRate(playbackRate(newValue.doubleValue()));
-            }
-        });
-        HBox playbackRow = new HBox(9,
-                startButton, pauseButton, resumeButton, resetButton,
-                createSpacer(), speedLabel, speedSlider);
-        playbackRow.setAlignment(Pos.CENTER_LEFT);
-        panel.getChildren().addAll(toolRow, playbackRow);
+        panel.add(tools);
+        panel.add(Box.createVerticalStrut(11));
+        panel.add(playback);
         return panel;
     }
 
-    private VBox createInformationPanel() {
-        VBox panel = new VBox(6);
-        panel.getStyleClass().add("pathfinding-info-panel");
-        Label heading = new Label("How A* chooses a route");
-        heading.getStyleClass().add("panel-heading");
-        Label explanation = new Label(
-                "A* prioritizes the lowest f(n) = g(n) + h(n): g is the path cost so far, "
-                        + "and h is Manhattan distance to the destination. Manhattan distance "
-                        + "fits four-directional, unit-cost movement. With a consistent heuristic, "
-                        + "this grid search runs in O(V log V) time and O(V) space for V walkable cells.");
-        explanation.getStyleClass().add("pathfinding-info-text");
-        explanation.setWrapText(true);
-        panel.getChildren().addAll(heading, explanation);
+    private JPanel createGridPanel() {
+        JPanel panel = cardPanel();
+        panel.setLayout(new BorderLayout(0, 9));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER_COLOR),
+                new EmptyBorder(12, 14, 10, 14)));
+
+        JPanel heading = new JPanel();
+        heading.setOpaque(false);
+        heading.setLayout(new BoxLayout(heading, BoxLayout.Y_AXIS));
+        heading.add(label("Grid workspace", PRIMARY_TEXT, Font.BOLD, 15));
+        heading.add(Box.createVerticalStrut(8));
+
+        JPanel legend = new JPanel(new FlowLayout(FlowLayout.LEFT, 9, 0));
+        legend.setOpaque(false);
+        legend.add(legendItem("Start", new Color(0x2fb889)));
+        legend.add(legendItem("Destination", new Color(0xe56776)));
+        legend.add(legendItem("Wall", new Color(0x060a13)));
+        legend.add(legendItem("Frontier", new Color(0x355b82)));
+        legend.add(legendItem("Exploring", new Color(0xf0a64b)));
+        legend.add(legendItem("Explored", new Color(0x247e83)));
+        legend.add(legendItem("Path", new Color(0x8056dc)));
+        heading.add(legend);
+        panel.add(heading, BorderLayout.NORTH);
+
+        JPanel canvasFrame = new JPanel(new BorderLayout());
+        canvasFrame.setOpaque(true);
+        canvasFrame.setBackground(new Color(0x0c1426));
+        canvasFrame.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(0x2a3955)),
+                new EmptyBorder(3, 3, 3, 3)));
+        canvasFrame.add(gridView, BorderLayout.CENTER);
+        panel.add(canvasFrame, BorderLayout.CENTER);
+
+        JTextArea explanation = createTextArea(
+                "A* prioritizes the lowest f(n) = g(n) + h(n). Manhattan distance is admissible "
+                        + "for four-directional, unit-cost movement.", 1);
+        explanation.setForeground(BODY_TEXT);
+        explanation.setFont(font(Font.PLAIN, 10));
+        panel.add(explanation, BorderLayout.SOUTH);
         return panel;
     }
 
-    private HBox createLegend() {
-        HBox legend = new HBox(12,
-                createLegendItem("Start", "path-cell-start"),
-                createLegendItem("Destination", "path-cell-end"),
-                createLegendItem("Wall", "path-cell-wall"),
-                createLegendItem("Frontier", "path-cell-open"),
-                createLegendItem("Exploring", "path-cell-current"),
-                createLegendItem("Explored", "path-cell-explored"),
-                createLegendItem("Path", "path-cell-final"));
-        legend.setAlignment(Pos.CENTER_LEFT);
-        legend.setSpacing(8);
-        return legend;
+    private JPanel createStatusArea() {
+        JPanel area = new JPanel(new BorderLayout(0, 7));
+        area.setOpaque(false);
+        JPanel statistics = new JPanel(new GridLayout(1, 4, 8, 0));
+        statistics.setOpaque(false);
+        statistics.add(statCard("VISITED CELLS", visitedValue));
+        statistics.add(statCard("PATH LENGTH", pathLengthValue));
+        statistics.add(statCard("EXPLORED NODES", exploredValue));
+        statistics.add(statCard("STATUS", statusValue));
+        area.add(statistics, BorderLayout.NORTH);
+
+        JPanel details = cardPanel();
+        details.setLayout(new BorderLayout(10, 0));
+        details.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER_COLOR),
+                new EmptyBorder(7, 10, 7, 10)));
+        details.add(label("CURRENT STEP", new Color(0x71809b), Font.BOLD, 9),
+                BorderLayout.WEST);
+        JPanel text = new JPanel();
+        text.setOpaque(false);
+        text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+        text.add(stepDetailsValue);
+        text.add(Box.createVerticalStrut(3));
+        text.add(messageValue);
+        details.add(text, BorderLayout.CENTER);
+        area.add(details, BorderLayout.CENTER);
+        return area;
     }
 
-    private HBox createLegendItem(String text, String stateClass) {
-        Region swatch = new Region();
-        swatch.getStyleClass().addAll("pathfinding-legend-swatch", stateClass);
-        Label label = new Label(text);
-        label.getStyleClass().add("pathfinding-legend-label");
-        HBox item = new HBox(5, swatch, label);
-        item.setAlignment(Pos.CENTER_LEFT);
-        return item;
-    }
-
-    private VBox createStatCard(String title, Label value) {
-        VBox card = new VBox(7, new Label(title), value);
-        card.getStyleClass().add("stat-card");
-        card.getChildren().get(0).getStyleClass().add("stat-title");
-        value.getStyleClass().add("stat-value");
-        HBox.setHgrow(card, Priority.ALWAYS);
-        card.setMaxWidth(Double.MAX_VALUE);
-        return card;
-    }
-
-    private VBox labeledControl(String labelText, Node control) {
-        VBox field = new VBox(6);
-        Label label = new Label(labelText);
-        label.getStyleClass().add("control-label");
-        field.getChildren().addAll(label, control);
-        HBox.setHgrow(field, Priority.ALWAYS);
+    private JPanel labeledControl(String title, Component control) {
+        JPanel field = new JPanel();
+        field.setOpaque(false);
+        field.setLayout(new BoxLayout(field, BoxLayout.Y_AXIS));
+        JLabel heading = label(title, new Color(0x8793aa), Font.BOLD, 9);
+        heading.setAlignmentX(LEFT_ALIGNMENT);
+        control.setFont(font(Font.PLAIN, 12));
+        if (control instanceof JComponent component) {
+            component.setAlignmentX(LEFT_ALIGNMENT);
+        }
+        field.add(heading);
+        field.add(Box.createVerticalStrut(5));
+        field.add(control);
+        field.setAlignmentX(LEFT_ALIGNMENT);
         return field;
     }
 
-    private Region createSpacer() {
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        return spacer;
+    private JPanel legendItem(String text, Color color) {
+        JPanel item = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        item.setOpaque(false);
+        JPanel swatch = new JPanel();
+        swatch.setOpaque(true);
+        swatch.setBackground(color);
+        swatch.setPreferredSize(new Dimension(11, 11));
+        swatch.setBorder(BorderFactory.createLineBorder(new Color(0x3a4963)));
+        item.add(swatch);
+        item.add(label(text, BODY_TEXT, Font.PLAIN, 9));
+        return item;
+    }
+
+    private JPanel statCard(String title, JLabel value) {
+        JPanel card = cardPanel();
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER_COLOR),
+                new EmptyBorder(7, 9, 7, 9)));
+        JLabel heading = label(title, new Color(0x71809b), Font.BOLD, 9);
+        value.setForeground(PRIMARY_TEXT);
+        value.setFont(font(Font.BOLD, 16));
+        card.add(heading);
+        card.add(Box.createVerticalStrut(4));
+        card.add(value);
+        return card;
+    }
+
+    private void configureControls() {
+        toolChoice.addItem(PathfindingTool.SET_START);
+        toolChoice.addItem(PathfindingTool.SET_END);
+        toolChoice.addItem(PathfindingTool.WALL);
+        toolChoice.addItem(PathfindingTool.ERASE);
+        toolChoice.setSelectedItem(PathfindingTool.WALL);
+        AlgoVisionTheme.styleComboBox(toolChoice);
+        toolChoice.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(
+                    javax.swing.JList<?> list,
+                    Object value,
+                    int index,
+                    boolean isSelected,
+                    boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                setBackground(isSelected
+                        ? AlgoVisionTheme.PRIMARY_SELECTED : AlgoVisionTheme.SURFACE_BACKGROUND);
+                setForeground(AlgoVisionTheme.TEXT_PRIMARY);
+                setBorder(new EmptyBorder(5, 8, 5, 8));
+                return this;
+            }
+        });
+        toolChoice.addActionListener(event -> {
+            PathfindingTool tool = (PathfindingTool) toolChoice.getSelectedItem();
+            if (tool != null) {
+                selectedTool = tool;
+            }
+        });
+
+        styleButton(startButton, true, 78);
+        styleButton(pauseButton, false, 78);
+        styleButton(resumeButton, false, 82);
+        styleButton(resetButton, false, 78);
+        styleButton(clearGridButton, false, 100);
+        styleButton(randomObstaclesButton, false, 138);
+        startButton.addActionListener(event -> startSearch());
+        pauseButton.addActionListener(event -> pause());
+        resumeButton.addActionListener(event -> resume());
+        resetButton.addActionListener(event -> resetSearch());
+        clearGridButton.addActionListener(event -> clearGrid());
+        randomObstaclesButton.addActionListener(event -> randomizeObstacles());
+        speedSlider.setOpaque(false);
+        speedSlider.setMajorTickSpacing(50);
+        speedSlider.setPaintTicks(true);
+        speedSlider.setToolTipText("Adjust A* animation speed");
+        speedSlider.addChangeListener(event -> updateTimerSpeed());
     }
 
     private void editCell(GridPosition position) {
-        if ("Running".equals(statusValue.getText()) || "Paused".equals(statusValue.getText())
-                || currentStep != null) {
+        PathfindingTool tool = (PathfindingTool) toolChoice.getSelectedItem();
+        if (tool != null) {
+            selectedTool = tool;
+        }
+        if (isSearchActive() || stepWorker != null || currentStep != null) {
             resetSearch();
         }
 
@@ -286,43 +390,117 @@ public final class PathfindingController {
     }
 
     private void startSearch() {
-        if ("Running".equals(statusValue.getText()) || "Paused".equals(statusValue.getText())) {
-            return;
-        }
-        try {
-            steps = algorithm.generateSteps(grid);
-        } catch (IllegalArgumentException exception) {
-            setMessage(exception.getMessage());
+        String status = statusValue.getText();
+        if (stepWorker != null || isAnimationTimerRunning()
+                || "Paused".equals(status) || "Preparing".equals(status)
+                || "Completed".equals(status)) {
             return;
         }
 
+        cancelCurrentRun();
+        int runId = generationId;
+        PathfindingGrid searchGrid = grid.copy();
+        steps = List.of();
         stepIndex = 0;
         currentStep = null;
-        timeline = new Timeline(new KeyFrame(Duration.millis(65), event -> advance()));
-        timeline.setCycleCount(Timeline.INDEFINITE);
-        timeline.setRate(playbackRate(speedSlider.getValue()));
-        setStatus("Running");
-        setMessage("A* search started.");
-        timeline.play();
+        pathAnimationStep = null;
+        pathToAnimate = List.of();
+        pathAnimationIndex = 0;
+        gridView.render(null);
+        setStatus("Preparing");
+        setMessage("Preparing A* search steps.");
+        updateStatistics();
         updateButtons();
+
+        stepWorker = new SwingWorker<>() {
+            @Override
+            protected List<AStarStep> doInBackground() {
+                return algorithm.generateSteps(searchGrid);
+            }
+
+            @Override
+            protected void done() {
+                if (runId != generationId || stepWorker != this) {
+                    return;
+                }
+                stepWorker = null;
+                try {
+                    steps = get();
+                    stepIndex = 0;
+                    if (steps.isEmpty()) {
+                        finishSearch();
+                        return;
+                    }
+                    setStatus("Running");
+                    setMessage("A* search started.");
+                    updateTimerSpeed();
+                    startAnimationTimer(runId);
+                    updateButtons();
+                } catch (CancellationException exception) {
+                    setStatus("Ready");
+                    setMessage("A* search preparation was cancelled.");
+                    updateButtons();
+                } catch (InterruptedException exception) {
+                    failSearch("A* search result retrieval was interrupted: " + exception.getMessage());
+                } catch (ExecutionException exception) {
+                    Throwable cause = exception.getCause() == null
+                            ? exception : exception.getCause();
+                    String detail = cause.getMessage();
+                    failSearch("A* search failed: "
+                            + (detail == null || detail.isBlank()
+                                    ? cause.getClass().getSimpleName() : detail));
+                }
+            }
+        };
+        stepWorker.execute();
     }
 
     private void resume() {
-        if (timeline != null && "Paused".equals(statusValue.getText())) {
-            timeline.setRate(playbackRate(speedSlider.getValue()));
-            timeline.play();
-            setStatus("Running");
-            setMessage("A* search resumed.");
-            updateButtons();
+        if (!"Paused".equals(statusValue.getText()) || steps.isEmpty()) {
+            return;
         }
+        setStatus("Running");
+        setMessage("A* search resumed.");
+        updateTimerSpeed();
+        startAnimationTimer(generationId);
+        updateButtons();
+    }
+
+    private void startAnimationTimer(int runId) {
+        stopAnimationTimer();
+        Timer timer = new Timer(timerDelayMillis, event -> {
+            if (animationTimer != event.getSource() || runId != generationId) {
+                return;
+            }
+            advance();
+        });
+        timer.setCoalesce(true);
+        animationTimer = timer;
+        timer.start();
     }
 
     private void advance() {
+        if (pathAnimationStep != null) {
+            if (pathAnimationIndex < pathToAnimate.size()) {
+                advancePathAnimation();
+                return;
+            }
+            pathAnimationStep = null;
+            pathToAnimate = List.of();
+            pathAnimationIndex = 0;
+        }
         if (stepIndex >= steps.size()) {
             finishSearch();
             return;
         }
         currentStep = steps.get(stepIndex++);
+        if (currentStep.event() == AStarEvent.PATH_FOUND && !currentStep.path().isEmpty()) {
+            pathAnimationStep = currentStep;
+            pathToAnimate = currentStep.path();
+            pathAnimationIndex = 0;
+            advancePathAnimation();
+            return;
+        }
         gridView.render(currentStep);
         updateStatistics();
         stepDetailsValue.setText(detailsFor(currentStep));
@@ -332,24 +510,36 @@ public final class PathfindingController {
         }
     }
 
+    private void advancePathAnimation() {
+        pathAnimationIndex++;
+        gridView.render(pathAnimationStep, pathToAnimate.subList(0, pathAnimationIndex));
+        updateStatistics();
+        stepDetailsValue.setText("Reconstructing shortest path: "
+                + pathAnimationIndex + " of " + pathToAnimate.size() + " cells.");
+        setMessage("Drawing the final path one cell at a time.");
+    }
+
     private void finishSearch() {
-        stopTimeline();
+        stopAnimationTimer();
         setStatus("Completed");
         updateStatistics();
         updateButtons();
         if (currentStep != null && currentStep.path().isEmpty()) {
             setMessage("No path exists. Try erasing walls or randomizing the obstacles.");
         } else if (currentStep != null) {
-            setMessage("Shortest path found with " + Math.max(0, currentStep.path().size() - 1)
-                    + " moves.");
+            setMessage("Shortest path found with "
+                    + Math.max(0, currentStep.path().size() - 1) + " moves.");
         }
     }
 
     private void resetSearch() {
-        stopTimeline();
+        cancelCurrentRun();
         steps = List.of();
         stepIndex = 0;
         currentStep = null;
+        pathAnimationStep = null;
+        pathToAnimate = List.of();
+        pathAnimationIndex = 0;
         gridView.render(null);
         stepDetailsValue.setText("Choose a tool, then start A* to explore the grid.");
         setStatus("Ready");
@@ -374,15 +564,32 @@ public final class PathfindingController {
         updateButtons();
     }
 
-    private void stopTimeline() {
-        if (timeline != null) {
-            timeline.stop();
-            timeline = null;
+    private void renderGrid() {
+        gridView.render(currentStep);
+    }
+
+    private void cancelCurrentRun() {
+        generationId++;
+        if (stepWorker != null) {
+            stepWorker.cancel(true);
+            stepWorker = null;
+        }
+        stopAnimationTimer();
+    }
+
+    private void stopAnimationTimer() {
+        if (animationTimer != null) {
+            animationTimer.stop();
+            animationTimer = null;
         }
     }
 
-    private void renderGrid() {
-        gridView.render(currentStep);
+    private void updateTimerSpeed() {
+        timerDelayMillis = intervalFor(speedSlider.getValue());
+        if (animationTimer != null) {
+            animationTimer.setDelay(timerDelayMillis);
+            animationTimer.setInitialDelay(timerDelayMillis);
+        }
     }
 
     private void updateStatistics() {
@@ -392,8 +599,8 @@ public final class PathfindingController {
             exploredValue.setText("0");
             return;
         }
-        int visitedCells = currentStep.openCells().size() + currentStep.exploredCells().size();
-        visitedValue.setText(Integer.toString(visitedCells));
+        visitedValue.setText(Integer.toString(
+                currentStep.openCells().size() + currentStep.exploredCells().size()));
         exploredValue.setText(Integer.toString(currentStep.exploredCells().size()));
         if (!currentStep.path().isEmpty()) {
             pathLengthValue.setText(Integer.toString(currentStep.path().size() - 1));
@@ -407,13 +614,31 @@ public final class PathfindingController {
 
     private void updateButtons() {
         String status = statusValue.getText();
-        boolean active = "Running".equals(status) || "Paused".equals(status);
+        boolean active = isSearchActive();
         boolean completed = "Completed".equals(status);
-        startButton.setDisable(active || completed);
-        pauseButton.setDisable(!"Running".equals(status));
-        resumeButton.setDisable(!"Paused".equals(status));
-        resetButton.setDisable(!active && steps.isEmpty());
-        clearGridButton.setDisable(grid.walls().isEmpty() && !active && steps.isEmpty());
+        startButton.setEnabled(!active && !completed && stepWorker == null);
+        pauseButton.setEnabled("Running".equals(status) && animationTimer != null);
+        resumeButton.setEnabled("Paused".equals(status) && !steps.isEmpty());
+        resetButton.setEnabled(active || stepWorker != null || !steps.isEmpty()
+                || currentStep != null);
+        clearGridButton.setEnabled(!grid.walls().isEmpty() || active || stepWorker != null
+                || !steps.isEmpty());
+    }
+
+    private boolean isSearchActive() {
+        String status = statusValue.getText();
+        return "Preparing".equals(status) || "Running".equals(status)
+                || "Paused".equals(status);
+    }
+
+    private boolean isAnimationTimerRunning() {
+        return animationTimer != null && animationTimer.isRunning();
+    }
+
+    private void failSearch(String message) {
+        setStatus("Failed");
+        setMessage(message);
+        updateButtons();
     }
 
     private String messageFor(AStarStep step) {
@@ -421,19 +646,22 @@ public final class PathfindingController {
             case INITIALIZED -> "Start is in the priority queue with g = 0 and h = "
                     + step.hScores().get(grid.start()) + ".";
             case PRIORITY_QUEUE_UPDATE -> "Priority queue selected "
-                    + (step.currentCell() == null ? "a cell" : formatPosition(step.currentCell())) + ".";
+                    + (step.currentCell() == null
+                            ? "a cell" : formatPosition(step.currentCell())) + ".";
             case CURRENT_CELL -> "Exploring " + formatPosition(step.currentCell())
                     + " with g = " + step.gScores().get(step.currentCell())
                     + ", h = " + step.hScores().get(step.currentCell())
                     + ", f = " + step.fScores().get(step.currentCell()) + ".";
-            case NEIGHBOR_EVALUATION -> "Evaluating " + formatPosition(step.evaluatedNeighbor())
+            case NEIGHBOR_EVALUATION -> "Evaluating "
+                    + formatPosition(step.evaluatedNeighbor())
                     + ": g = " + step.candidateGScore()
                     + ", h = " + step.candidateHScore()
                     + ", f = " + step.candidateFScore() + ".";
             case QUEUE_ADD -> step.evaluatedNeighbor() == null
                     ? "Added the start cell to the priority queue."
                     : "Added " + formatPosition(step.evaluatedNeighbor())
-                            + " to the priority queue with f = " + step.candidateFScore() + ".";
+                            + " to the priority queue with f = "
+                            + step.candidateFScore() + ".";
             case PATH_FOUND -> "Destination reached. Highlighting the shortest path.";
             case NO_PATH -> "The priority queue is empty; no route reaches the destination.";
             case COMPLETE -> "A* search complete.";
@@ -478,15 +706,89 @@ public final class PathfindingController {
         return "(" + (position.row() + 1) + ", " + (position.column() + 1) + ")";
     }
 
-    private double playbackRate(double value) {
-        return 0.35 + value / 100.0 * 4.65;
-    }
-
     private void setStatus(String status) {
         statusValue.setText(status);
+        statusValue.setForeground(switch (status) {
+            case "Running" -> AlgoVisionTheme.SUCCESS;
+            case "Paused" -> AlgoVisionTheme.WARNING;
+            case "Completed" -> AlgoVisionTheme.ACCENT;
+            case "Failed" -> AlgoVisionTheme.ERROR;
+            default -> PRIMARY_TEXT;
+        });
     }
 
     private void setMessage(String message) {
         messageValue.setText(message);
+    }
+
+    private JPanel cardPanel() {
+        JPanel panel = new JPanel();
+        panel.setBackground(PANEL_BACKGROUND);
+        panel.setBorder(BorderFactory.createLineBorder(BORDER_COLOR));
+        return panel;
+    }
+
+    private JLabel label(String text, Color color, int style, int size) {
+        JLabel label = new JLabel(text);
+        label.setForeground(color);
+        label.setFont(font(style, size));
+        label.setAlignmentX(LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private JTextArea createTextArea(String text, int rows) {
+        JTextArea area = new JTextArea(text, rows, 0);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setOpaque(false);
+        area.setForeground(new Color(0xc5cbea));
+        area.setFont(font(Font.PLAIN, 10));
+        area.setBorder(null);
+        area.setFocusable(false);
+        return area;
+    }
+
+    private void styleButton(JButton button, boolean primary, int width) {
+        AlgoVisionTheme.styleButton(button, primary, width);
+        button.setPreferredSize(new Dimension(width, 36));
+        button.setMaximumSize(new Dimension(width, 36));
+    }
+
+    private Font font(int style, int size) {
+        return AlgoVisionTheme.font(style, size);
+    }
+
+    private static int intervalFor(int value) {
+        double rate = 0.35 + value / 100.0 * 4.65;
+        return Math.max(1, (int) Math.round(BASE_INTERVAL_MILLIS / rate));
+    }
+
+    int stepIndexForTesting() {
+        return stepIndex;
+    }
+
+    int pathAnimationIndexForTesting() {
+        return pathAnimationIndex;
+    }
+
+    int timerDelayForTesting() {
+        return timerDelayMillis;
+    }
+
+    boolean isAnimationTimerRunningForTesting() {
+        return isAnimationTimerRunning();
+    }
+
+    String statusForTesting() {
+        return statusValue.getText();
+    }
+
+    PathfindingGrid gridForTesting() {
+        return grid;
+    }
+
+    PathfindingGridView gridViewForTesting() {
+        return gridView;
     }
 }

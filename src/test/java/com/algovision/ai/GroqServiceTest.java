@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
+import java.net.http.HttpTimeoutException;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.CompletionException;
@@ -59,6 +60,9 @@ class GroqServiceTest {
     private AtomicReference<String> requestBody;
     private AtomicReference<String> requestApiKey;
     private AtomicReference<String> requestQuery;
+    private AtomicReference<String> requestMethod;
+    private AtomicReference<String> requestContentType;
+    private AtomicReference<String> requestPath;
     private int responseCode;
     private String responseBody;
 
@@ -67,6 +71,9 @@ class GroqServiceTest {
         requestBody = new AtomicReference<>();
         requestApiKey = new AtomicReference<>();
         requestQuery = new AtomicReference<>();
+        requestMethod = new AtomicReference<>();
+        requestContentType = new AtomicReference<>();
+        requestPath = new AtomicReference<>();
         responseCode = 200;
         responseBody = wrap(ANALYSIS_JSON);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -74,6 +81,9 @@ class GroqServiceTest {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             requestApiKey.set(exchange.getRequestHeaders().getFirst("Authorization"));
             requestQuery.set(exchange.getRequestURI().getRawQuery());
+            requestMethod.set(exchange.getRequestMethod());
+            requestContentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            requestPath.set(exchange.getRequestURI().getPath());
             byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(responseCode, body.length);
             exchange.getResponseBody().write(body);
@@ -104,6 +114,9 @@ class GroqServiceTest {
         assertTrue(requestBody.get().contains("openai/gpt-oss-120b"));
         assertTrue(requestBody.get().contains("\"messages\""));
         assertTrue(requestBody.get().contains("\"response_format\":{\"type\":\"json_object\"}"));
+        assertEquals("POST", requestMethod.get());
+        assertEquals("application/json", requestContentType.get());
+        assertEquals("/chat/completions", requestPath.get());
         assertEquals("Bearer test-key", requestApiKey.get());
         assertNull(requestQuery.get());
     }
@@ -142,7 +155,9 @@ class GroqServiceTest {
         GroqService missingKey = new GroqService(HttpClient.newHttpClient(), endpoint(), apiKey);
         CompletionException failure = assertThrows(CompletionException.class,
                 () -> missingKey.analyze("int main() {}", "C++", "Other").join());
-        assertTrue(failure.getCause().getMessage().contains("Add your Groq API key"));
+        assertEquals(
+                "Groq API key not found. Add GROQ_API_KEY to the project-root .env file.",
+                failure.getCause().getMessage());
         assertNull(requestBody.get());
     }
 
@@ -158,6 +173,21 @@ class GroqServiceTest {
         CompletionException malformed = assertThrows(CompletionException.class,
                 () -> service().analyze("code", "Java", "Arrays").join());
         assertTrue(malformed.getCause().getMessage().contains("unreadable response"));
+    }
+
+    @Test
+    void reportsInvalidApiKeyWithoutIncludingTheCredentialInTheError() {
+        responseCode = 401;
+        responseBody = "{\"error\":{\"message\":\"Invalid API key test-key. Bearer gsk_secret\"}}";
+        CompletionException failure = assertThrows(CompletionException.class,
+                () -> service().analyze("code", "Java", "Arrays").join());
+
+        assertTrue(failure.getCause() instanceof GroqService.GroqException);
+        assertEquals(GroqService.ErrorType.API_ERROR,
+                ((GroqService.GroqException) failure.getCause()).type());
+        assertTrue(failure.getCause().getMessage().contains("authentication failed (HTTP 401)"));
+        assertFalse(failure.getCause().getMessage().contains("test-key"));
+        assertFalse(failure.getCause().getMessage().contains("gsk_secret"));
     }
 
     @Test
@@ -187,6 +217,16 @@ class GroqServiceTest {
         CompletionException failure = assertThrows(CompletionException.class,
                 () -> disconnected.analyze("code", "C++", "Graphs").join());
         assertTrue(failure.getCause().getMessage().contains("Could not connect to Groq"));
+    }
+
+    @Test
+    void mapsRequestTimeoutToAnActionableMessage() {
+        GroqService.GroqException failure =
+                service().mapFailure(new HttpTimeoutException("request timed out"));
+
+        assertEquals(GroqService.ErrorType.NETWORK, failure.type());
+        assertTrue(failure.getMessage().contains("too long to respond"));
+        assertFalse(failure.getMessage().contains("test-key"));
     }
 
     private GroqService service() {

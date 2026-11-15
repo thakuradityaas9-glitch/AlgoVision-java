@@ -1,132 +1,174 @@
 package com.algovision.visualization;
 
-import java.util.ArrayList;
+import java.awt.BasicStroke;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Point;
+import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
+
+import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 
 import com.algovision.pathfinding.model.AStarStep;
 import com.algovision.pathfinding.model.GridPosition;
 import com.algovision.pathfinding.model.PathfindingGrid;
 
-import javafx.geometry.HPos;
-import javafx.geometry.VPos;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.RowConstraints;
+public final class PathfindingGridView extends JPanel {
+    private static final Color GRID_BACKGROUND = new Color(0x0c1426);
+    private static final Color EMPTY_COLOR = new Color(0x172238);
+    private static final Color START_COLOR = new Color(0x2fb889);
+    private static final Color END_COLOR = new Color(0xe56776);
+    private static final Color WALL_COLOR = new Color(0x060a13);
+    private static final Color OPEN_COLOR = new Color(0x355b82);
+    private static final Color CURRENT_COLOR = new Color(0xf0a64b);
+    private static final Color NEIGHBOR_COLOR = new Color(0x42b8d0);
+    private static final Color EXPLORED_COLOR = new Color(0x247e83);
+    private static final Color PATH_COLOR = new Color(0x8056dc);
+    private static final Color CELL_BORDER_COLOR = new Color(0x26334c);
 
-public final class PathfindingGridView extends GridPane {
     private final PathfindingGrid grid;
-    private final List<List<Region>> cells = new ArrayList<>();
     private Consumer<GridPosition> cellActionHandler;
     private AStarStep currentStep;
+    private List<GridPosition> visiblePath = List.of();
+    private GridPosition lastActionCell;
+    private boolean drawing;
 
     public PathfindingGridView(PathfindingGrid grid) {
-        this.grid = grid;
-        getStyleClass().add("pathfinding-grid");
-        setMinSize(0, 0);
-        setPrefSize(760, 450);
-        setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
-        setHgap(1);
-        setVgap(1);
+        this.grid = Objects.requireNonNull(grid, "grid");
+        setOpaque(true);
+        setBackground(GRID_BACKGROUND);
+        setCursor(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR));
+        setPreferredSize(new Dimension(760, 450));
+        setMinimumSize(new Dimension(360, 240));
 
-        double columnPercent = 100.0 / grid.columns();
-        for (int column = 0; column < grid.columns(); column++) {
-            ColumnConstraints constraints = new ColumnConstraints();
-            constraints.setPercentWidth(columnPercent);
-            constraints.setHgrow(Priority.ALWAYS);
-            constraints.setHalignment(HPos.CENTER);
-            getColumnConstraints().add(constraints);
-        }
-        double rowPercent = 100.0 / grid.rows();
-        for (int row = 0; row < grid.rows(); row++) {
-            RowConstraints constraints = new RowConstraints();
-            constraints.setPercentHeight(rowPercent);
-            constraints.setVgrow(Priority.ALWAYS);
-            constraints.setValignment(VPos.CENTER);
-            getRowConstraints().add(constraints);
-        }
-
-        for (int row = 0; row < grid.rows(); row++) {
-            List<Region> cellRow = new ArrayList<>(grid.columns());
-            for (int column = 0; column < grid.columns(); column++) {
-                GridPosition position = new GridPosition(row, column);
-                Region cell = createCell(position);
-                cellRow.add(cell);
-                add(cell, column, row);
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent event) {
+                if (!isEnabled() || !SwingUtilities.isLeftMouseButton(event)) {
+                    return;
+                }
+                drawing = true;
+                lastActionCell = null;
+                applyCellAction(event.getPoint());
             }
-            cells.add(cellRow);
-        }
-        render();
+
+            @Override
+            public void mouseReleased(MouseEvent event) {
+                drawing = false;
+                lastActionCell = null;
+            }
+        });
+
+        addMouseMotionListener(new MouseAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent event) {
+                if (isEnabled() && drawing
+                        && (event.getModifiersEx() & MouseEvent.BUTTON1_DOWN_MASK) != 0) {
+                    applyCellAction(event.getPoint());
+                }
+            }
+        });
     }
 
     public void setCellActionHandler(Consumer<GridPosition> handler) {
-        cellActionHandler = handler;
+        cellActionHandler = Objects.requireNonNull(handler, "handler");
     }
 
     public void render(AStarStep step) {
         currentStep = step;
-        render();
+        visiblePath = step == null ? List.of() : step.path();
+        repaint();
     }
 
-    private Region createCell(GridPosition position) {
-        Region cell = new Region();
-        cell.getStyleClass().addAll("pathfinding-cell", "path-cell-empty");
-        cell.setMinSize(0, 0);
-        cell.setPrefSize(24, 20);
-        cell.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
-        cell.setOnMousePressed(event -> {
-            if (event.isPrimaryButtonDown() && cellActionHandler != null) {
-                cellActionHandler.accept(position);
-            }
-        });
-        cell.setOnMouseEntered(event -> {
-            if (event.isPrimaryButtonDown() && cellActionHandler != null) {
-                cellActionHandler.accept(position);
-            }
-        });
-        return cell;
+    public void render(AStarStep step, List<GridPosition> visiblePath) {
+        currentStep = Objects.requireNonNull(step, "step");
+        this.visiblePath = List.copyOf(visiblePath);
+        repaint();
     }
 
-    private void render() {
+    @Override
+    protected void paintComponent(Graphics graphics) {
+        super.paintComponent(graphics);
+        Graphics2D g2 = (Graphics2D) graphics.create();
+        g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2.setStroke(new BasicStroke(0.7f));
+        int width = getWidth();
+        int height = getHeight();
+
         for (int row = 0; row < grid.rows(); row++) {
+            int top = row * height / grid.rows();
+            int bottom = (row + 1) * height / grid.rows();
             for (int column = 0; column < grid.columns(); column++) {
+                int left = column * width / grid.columns();
+                int right = (column + 1) * width / grid.columns();
+                int cellWidth = Math.max(1, right - left - 1);
+                int cellHeight = Math.max(1, bottom - top - 1);
                 GridPosition position = new GridPosition(row, column);
-                Region cell = cells.get(row).get(column);
-                cell.getStyleClass().setAll("pathfinding-cell", stateClass(position));
+                g2.setColor(cellColor(position));
+                g2.fillRect(left, top, cellWidth, cellHeight);
+                g2.setColor(CELL_BORDER_COLOR);
+                g2.drawRect(left, top, cellWidth, cellHeight);
             }
         }
+        g2.dispose();
     }
 
-    private String stateClass(GridPosition position) {
+    private void applyCellAction(Point point) {
+        GridPosition position = positionAt(point);
+        if (position == null || position.equals(lastActionCell) || cellActionHandler == null) {
+            return;
+        }
+        lastActionCell = position;
+        cellActionHandler.accept(position);
+    }
+
+    private GridPosition positionAt(Point point) {
+        if (getWidth() <= 0 || getHeight() <= 0
+                || point.x < 0 || point.x >= getWidth()
+                || point.y < 0 || point.y >= getHeight()) {
+            return null;
+        }
+        return new GridPosition(
+                point.y * grid.rows() / getHeight(),
+                point.x * grid.columns() / getWidth());
+    }
+
+    private Color cellColor(GridPosition position) {
         if (position.equals(grid.start())) {
-            return "path-cell-start";
+            return START_COLOR;
         }
         if (position.equals(grid.end())) {
-            return "path-cell-end";
+            return END_COLOR;
         }
         if (grid.isWall(position)) {
-            return "path-cell-wall";
+            return WALL_COLOR;
         }
         if (currentStep == null) {
-            return "path-cell-empty";
+            return EMPTY_COLOR;
         }
-        if (currentStep.path().contains(position)) {
-            return "path-cell-final";
+        if (visiblePath.contains(position)) {
+            return PATH_COLOR;
         }
         if (position.equals(currentStep.currentCell())) {
-            return "path-cell-current";
+            return CURRENT_COLOR;
         }
         if (position.equals(currentStep.evaluatedNeighbor())) {
-            return "path-cell-neighbor";
+            return NEIGHBOR_COLOR;
         }
         if (currentStep.exploredCells().contains(position)) {
-            return "path-cell-explored";
+            return EXPLORED_COLOR;
         }
         if (currentStep.openCells().contains(position)) {
-            return "path-cell-open";
+            return OPEN_COLOR;
         }
-        return "path-cell-empty";
+        return EMPTY_COLOR;
     }
 }

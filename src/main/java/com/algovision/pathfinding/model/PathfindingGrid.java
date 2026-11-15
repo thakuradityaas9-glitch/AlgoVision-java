@@ -79,6 +79,12 @@ public final class PathfindingGrid {
         return Collections.unmodifiableSet(new LinkedHashSet<>(walls));
     }
 
+    public PathfindingGrid copy() {
+        PathfindingGrid copy = new PathfindingGrid(rows, columns, start, end);
+        copy.walls.addAll(walls);
+        return copy;
+    }
+
     public List<GridPosition> neighbors(GridPosition position) {
         requirePosition(position);
         List<GridPosition> candidates = List.of(

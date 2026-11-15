@@ -85,6 +85,15 @@ public class Graph {
         nextNodeId = 1;
     }
 
+    public Graph copy() {
+        Graph copy = new Graph();
+        copy.nodes.putAll(nodes);
+        adjacencyList.forEach((nodeId, neighbors) ->
+                copy.adjacencyList.put(nodeId, new LinkedHashMap<>(neighbors)));
+        copy.nextNodeId = nextNodeId;
+        return copy;
+    }
+
     public boolean containsNode(int nodeId) {
         return nodes.containsKey(nodeId);
     }

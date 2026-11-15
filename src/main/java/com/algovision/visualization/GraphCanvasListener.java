@@ -7,5 +7,7 @@ public interface GraphCanvasListener {
 
     void onNodeClick(int nodeId);
 
+    void onNodeMoved(int nodeId, double xRatio, double yRatio);
+
     void onEdgeClick(GraphEdge edge);
 }

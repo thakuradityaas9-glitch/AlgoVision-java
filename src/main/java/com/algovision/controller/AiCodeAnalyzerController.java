@@ -1,29 +1,52 @@
 package com.algovision.controller;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.GridLayout;
+import java.awt.HeadlessException;
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
+import java.awt.event.ActionEvent;
+import java.util.Objects;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
 
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JProgressBar;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTextPane;
+import javax.swing.SwingUtilities;
+import javax.swing.border.EmptyBorder;
+
+import com.algovision.ai.AnalysisClient;
 import com.algovision.ai.AnalysisResponse;
 import com.algovision.ai.GroqService;
+import com.algovision.ui.AiAnalysisDashboard;
+import com.algovision.ui.AlgoVisionTheme;
+import com.algovision.ui.SyntaxCodeEditor;
 
-import javafx.application.Platform;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.Node;
-import javafx.scene.control.Button;
-import javafx.scene.control.ComboBox;
-import javafx.scene.control.Label;
-import javafx.scene.control.ProgressIndicator;
-import javafx.scene.control.ScrollPane;
-import javafx.scene.control.TextArea;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.VBox;
-import javafx.scene.input.Clipboard;
-import javafx.scene.input.ClipboardContent;
+public final class AiCodeAnalyzerController extends JPanel {
+    private static final System.Logger LOGGER =
+            System.getLogger(AiCodeAnalyzerController.class.getName());
+    private static final Color APP_BACKGROUND = AlgoVisionTheme.APP_BACKGROUND;
+    private static final Color PANEL_BACKGROUND = AlgoVisionTheme.PANEL_BACKGROUND;
+    private static final Color EDITOR_BACKGROUND = AlgoVisionTheme.SURFACE_BACKGROUND;
+    private static final Color BORDER_COLOR = AlgoVisionTheme.BORDER;
+    private static final Color PRIMARY_TEXT = AlgoVisionTheme.TEXT_PRIMARY;
+    private static final Color BODY_TEXT = AlgoVisionTheme.TEXT_BODY;
+    private static final Color MUTED_TEXT = AlgoVisionTheme.TEXT_MUTED;
+    private static final Color ACCENT = AlgoVisionTheme.ACCENT;
 
-public final class AiCodeAnalyzerController {
     private static final String CPP_SAMPLE = """
             #include <iostream>
             #include <vector>
@@ -54,288 +77,449 @@ public final class AiCodeAnalyzerController {
                 }
             }
             """;
+    private static final String PYTHON_SAMPLE = """
+            def binary_search(values, target):
+                left, right = 0, len(values) - 1
+                while left <= right:
+                    middle = left + (right - left) // 2
+                    if values[middle] == target:
+                        return middle
+                    if values[middle] < target:
+                        left = middle + 1
+                    else:
+                        right = middle - 1
+                return -1
+            """;
 
-    private final GroqService groqService = new GroqService();
-    private final ComboBox<String> languageChoice = new ComboBox<>();
-    private final ComboBox<String> categoryChoice = new ComboBox<>();
-    private final TextArea codeEditor = new TextArea();
-    private final Button analyzeButton = new Button("Analyze with Groq");
-    private final Button clearButton = new Button("Clear");
-    private final Button sampleButton = new Button("Load sample");
-    private final ProgressIndicator loadingIndicator = new ProgressIndicator();
-    private final Label statusLabel = new Label();
-    private final VBox resultSections = new VBox(14);
-    private final ScrollPane view;
+    private final AnalysisClient analysisClient;
+    private final JComboBox<String> languageChoice = new JComboBox<>(
+            new String[] {"C++", "Java", "Python"});
+    private final JComboBox<String> categoryChoice = new JComboBox<>(new String[] {
+            "Arrays", "Strings", "Linked Lists", "Stacks and Queues", "Trees",
+            "Graphs", "Sorting", "Searching", "Dynamic Programming", "Greedy",
+            "Backtracking", "Other"
+    });
+    private final SyntaxCodeEditor sourceEditor = new SyntaxCodeEditor(true);
+    private final JTextPane codeEditor = sourceEditor.editor();
+    private final JButton analyzeButton = new JButton("Analyze with Groq");
+    private final JButton clearButton = new JButton("Clear");
+    private final JButton sampleButton = new JButton("Load sample");
+    private final JProgressBar loadingIndicator = new JProgressBar();
+    private final JLabel statusLabel = new JLabel("Paste code then analyze.");
+    private final AiAnalysisDashboard resultDashboard = new AiAnalysisDashboard();
+
+    private CompletableFuture<AnalysisResponse> activeRequest;
+    private long requestGeneration;
+    private boolean loading;
+    private boolean lastCompletionOnEdt;
 
     public AiCodeAnalyzerController() {
-        view = createView();
+        this(new GroqService());
     }
 
-    public Node getView() {
-        return view;
+    AiCodeAnalyzerController(AnalysisClient analysisClient) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            throw new IllegalStateException("AiCodeAnalyzerController must be created on the EDT.");
+        }
+        this.analysisClient = Objects.requireNonNull(analysisClient, "analysisClient");
+        setName("aiCodeAnalyzer");
+        setLayout(new BorderLayout(0, 14));
+        setBackground(APP_BACKGROUND);
+        setBorder(new EmptyBorder(20, 22, 18, 22));
+
+        configureControls();
+        add(createHeader(), BorderLayout.NORTH);
+        add(createWorkspaceSplit(), BorderLayout.CENTER);
+        add(createStatusBar(), BorderLayout.SOUTH);
+        configureListeners();
+        setLoading(false);
     }
 
-    private ScrollPane createView() {
-        VBox content = new VBox(18);
-        content.getStyleClass().add("analyzer-content");
-        content.setPadding(new Insets(30, 36, 30, 36));
+    private JPanel createHeader() {
+        JPanel header = new JPanel();
+        header.setOpaque(false);
+        header.setLayout(new BoxLayout(header, BoxLayout.Y_AXIS));
+        header.add(label("AI-POWERED CODE REVIEW", ACCENT, Font.BOLD, 10));
+        header.add(Box.createVerticalStrut(4));
+        header.add(label("AI Code Analyzer", PRIMARY_TEXT, Font.BOLD, 25));
+        header.add(Box.createVerticalStrut(3));
+        header.add(label(
+                "Complexity, correctness, optimization, and interview insights for your DSA code.",
+                BODY_TEXT, Font.PLAIN, 12));
+        return header;
+    }
 
-        VBox introduction = new VBox(7);
-        Label eyebrow = new Label("AI-POWERED CODE REVIEW");
-        eyebrow.getStyleClass().add("eyebrow");
-        Label heading = new Label("AI Code Analyzer");
-        heading.getStyleClass().add("welcome-heading");
-        Label subtitle = new Label(
-                "Get complexity insights, bug checks, and interview prep for your DSA solutions.");
-        subtitle.getStyleClass().add("welcome-subtitle");
-        subtitle.setWrapText(true);
-        introduction.getChildren().addAll(eyebrow, heading, subtitle);
+    private JSplitPane createWorkspaceSplit() {
+        JSplitPane split = new JSplitPane(
+                JSplitPane.HORIZONTAL_SPLIT, createEditorPanel(), createResultsPanel());
+        split.setName("analyzerSplitPane");
+        split.setBorder(BorderFactory.createEmptyBorder());
+        split.setDividerSize(8);
+        split.setContinuousLayout(true);
+        split.setResizeWeight(0.48);
+        split.setDividerLocation(0.48);
+        split.setBackground(APP_BACKGROUND);
+        return split;
+    }
 
-        VBox editorPanel = new VBox(13);
-        editorPanel.getStyleClass().add("analyzer-panel");
-        editorPanel.setPadding(new Insets(16));
-        languageChoice.getItems().setAll("C++", "Java");
-        languageChoice.getSelectionModel().selectFirst();
-        categoryChoice.getItems().setAll(
-                "Arrays", "Strings", "Linked Lists", "Stacks and Queues", "Trees",
-                "Graphs", "Sorting", "Searching", "Dynamic Programming", "Greedy",
-                "Backtracking", "Other");
-        categoryChoice.getSelectionModel().selectFirst();
-        languageChoice.setMaxWidth(Double.MAX_VALUE);
-        categoryChoice.setMaxWidth(Double.MAX_VALUE);
-        HBox selectors = new HBox(12,
-                labeledControl("LANGUAGE", languageChoice),
-                labeledControl("DSA CATEGORY", categoryChoice));
-        HBox.setHgrow(selectors.getChildren().get(0), Priority.ALWAYS);
-        HBox.setHgrow(selectors.getChildren().get(1), Priority.ALWAYS);
+    private JPanel createEditorPanel() {
+        JPanel panel = panel();
+        panel.setLayout(new BorderLayout(0, 10));
+        panel.setBorder(cardBorder());
 
-        codeEditor.setPromptText("Paste your C++ or Java solution here...");
-        codeEditor.setWrapText(false);
-        codeEditor.setPrefRowCount(15);
-        codeEditor.getStyleClass().add("analyzer-code-editor");
-        HBox.setHgrow(codeEditor, Priority.ALWAYS);
+        JPanel editorContent = new JPanel(new BorderLayout(0, 10));
+        editorContent.setOpaque(false);
+        JPanel selectors = new JPanel(new BorderLayout(9, 0));
+        selectors.setOpaque(false);
+        selectors.add(labeledControl("LANGUAGE", languageChoice), BorderLayout.WEST);
+        selectors.add(labeledControl("DSA CATEGORY", categoryChoice), BorderLayout.CENTER);
+        editorContent.add(selectors, BorderLayout.NORTH);
 
-        analyzeButton.getStyleClass().add("primary-button");
-        clearButton.getStyleClass().add("secondary-button");
-        sampleButton.getStyleClass().add("secondary-button");
-        analyzeButton.setOnAction(event -> analyze());
-        clearButton.setOnAction(event -> clear());
-        sampleButton.setOnAction(event -> loadSample());
-        loadingIndicator.setPrefSize(19, 19);
-        loadingIndicator.setMaxSize(19, 19);
+        editorContent.add(sourceEditor, BorderLayout.CENTER);
+        panel.add(label("SOURCE CODE", MUTED_TEXT, Font.BOLD, 10), BorderLayout.NORTH);
+        panel.add(editorContent, BorderLayout.CENTER);
+        panel.add(createEditorActions(), BorderLayout.SOUTH);
+        return panel;
+    }
+
+    private JPanel createEditorActions() {
+        JPanel actions = new JPanel(new BorderLayout(0, 7));
+        actions.setOpaque(false);
+        JPanel analyzeRow = new JPanel(new BorderLayout(8, 0));
+        analyzeRow.setOpaque(false);
+        JPanel secondaryActions = new JPanel(new GridLayout(1, 2, 7, 0));
+        secondaryActions.setOpaque(false);
+        styleButton(analyzeButton, true);
+        styleButton(clearButton, false);
+        styleButton(sampleButton, false);
+        analyzeRow.add(analyzeButton, BorderLayout.CENTER);
+        loadingIndicator.setName("analysisProgress");
+        loadingIndicator.setIndeterminate(true);
+        loadingIndicator.setBorderPainted(false);
+        loadingIndicator.setStringPainted(false);
+        loadingIndicator.setBackground(PANEL_BACKGROUND);
+        loadingIndicator.setForeground(ACCENT);
+        loadingIndicator.setPreferredSize(new java.awt.Dimension(100, 14));
         loadingIndicator.setVisible(false);
-        loadingIndicator.setManaged(false);
-        statusLabel.getStyleClass().add("analyzer-status");
-        statusLabel.setWrapText(true);
-        HBox actions = new HBox(10,
-                analyzeButton, clearButton, sampleButton, loadingIndicator);
-        actions.setAlignment(Pos.CENTER_LEFT);
-        editorPanel.getChildren().addAll(selectors, codeEditor, actions, statusLabel);
-
-        resultSections.setFillWidth(true);
-        content.getChildren().addAll(introduction, editorPanel, resultSections);
-        ScrollPane scrollPane = new ScrollPane(content);
-        scrollPane.setFitToWidth(true);
-        scrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        scrollPane.getStyleClass().add("content-scroll");
-        return scrollPane;
+        analyzeRow.add(loadingIndicator, BorderLayout.EAST);
+        secondaryActions.add(clearButton);
+        secondaryActions.add(sampleButton);
+        actions.add(analyzeRow, BorderLayout.NORTH);
+        actions.add(secondaryActions, BorderLayout.CENTER);
+        return actions;
     }
 
-    private VBox labeledControl(String title, ComboBox<String> control) {
-        VBox wrapper = new VBox(6);
-        Label label = new Label(title);
-        label.getStyleClass().add("control-label");
-        wrapper.getChildren().addAll(label, control);
+    private JPanel createResultsPanel() {
+        JPanel panel = panel();
+        panel.setLayout(new BorderLayout(0, 8));
+        panel.setBorder(cardBorder());
+        panel.add(label("ANALYSIS RESULTS", MUTED_TEXT, Font.BOLD, 10), BorderLayout.NORTH);
+        panel.add(resultDashboard, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private JPanel createStatusBar() {
+        JPanel statusPanel = panel();
+        statusPanel.setLayout(new BorderLayout());
+        statusPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER_COLOR),
+                BorderFactory.createEmptyBorder(8, 11, 8, 11)));
+        statusLabel.setName("analysisStatus");
+        statusLabel.setFont(font(Font.PLAIN, 11));
+        statusLabel.setForeground(MUTED_TEXT);
+        statusPanel.add(statusLabel, BorderLayout.CENTER);
+        return statusPanel;
+    }
+
+    private void configureControls() {
+        languageChoice.setName("languageChoice");
+        categoryChoice.setName("categoryChoice");
+        styleCombo(languageChoice);
+        styleCombo(categoryChoice);
+        sourceEditor.setLanguage((String) languageChoice.getSelectedItem());
+        resultDashboard.setCopyAction(this::copyOptimizedCode);
+    }
+
+    private void configureListeners() {
+        analyzeButton.addActionListener(event -> analyze());
+        clearButton.addActionListener(event -> clear());
+        sampleButton.addActionListener(event -> loadSample());
+        languageChoice.addActionListener(event ->
+                sourceEditor.setLanguage((String) languageChoice.getSelectedItem()));
+    }
+
+    private JPanel labeledControl(String title, JComboBox<String> control) {
+        JPanel wrapper = new JPanel();
+        wrapper.setOpaque(false);
+        wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
+        JLabel label = label(title, MUTED_TEXT, Font.BOLD, 9);
+        label.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+        wrapper.add(label);
+        wrapper.add(control);
         return wrapper;
     }
 
+    private void styleCombo(JComboBox<String> combo) {
+        combo.setFont(font(Font.PLAIN, 11));
+        AlgoVisionTheme.styleComboBox(combo);
+    }
+
+    private void styleScrollPane(JScrollPane scroll) {
+        scroll.setBorder(BorderFactory.createLineBorder(BORDER_COLOR));
+        scroll.getViewport().setBackground(EDITOR_BACKGROUND);
+        scroll.setBackground(EDITOR_BACKGROUND);
+        scroll.getVerticalScrollBar().setUnitIncrement(16);
+    }
+
+    private JPanel panel() {
+        JPanel panel = new JPanel();
+        panel.setBackground(PANEL_BACKGROUND);
+        return panel;
+    }
+
+    private javax.swing.border.Border cardBorder() {
+        return BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(BORDER_COLOR),
+                BorderFactory.createEmptyBorder(12, 12, 12, 12));
+    }
+
     private void analyze() {
+        if (loading) {
+            return;
+        }
+        clearResultTabs();
         String code = codeEditor.getText();
         if (code == null || code.isBlank()) {
             showError("Add some code before starting the analysis.");
-            codeEditor.requestFocus();
+            codeEditor.requestFocusInWindow();
             return;
         }
+        String language = (String) languageChoice.getSelectedItem();
+        String category = (String) categoryChoice.getSelectedItem();
+        if (language == null || category == null) {
+            showError("Choose a language and DSA category before analyzing.");
+            return;
+        }
+
+        long generation = ++requestGeneration;
+        lastCompletionOnEdt = false;
         setLoading(true);
-        statusLabel.setText("Sending your code to Groq...");
-        statusLabel.getStyleClass().remove("error-message");
-        resultSections.getChildren().clear();
-        groqService.analyze(code, languageChoice.getValue(), categoryChoice.getValue())
-                .whenComplete((analysis, error) -> Platform.runLater(() -> {
-                    setLoading(false);
-                    if (error != null) {
-                        showError(rootCause(error).getMessage());
-                        return;
-                    }
-                    statusLabel.setText("Analysis complete.");
-                    renderAnalysis(analysis);
-                }));
+        setStatus("Sending your code to Groq...", false);
+        try {
+            CompletableFuture<AnalysisResponse> request =
+                    analysisClient.analyze(code, language, category);
+            if (request == null) {
+                finishFailure(generation,
+                        new IllegalStateException("Analysis service returned no request."));
+                return;
+            }
+            activeRequest = request;
+            request.whenComplete((analysis, error) -> SwingUtilities.invokeLater(
+                    () -> completeRequest(generation, analysis, error)));
+        } catch (RuntimeException exception) {
+            finishFailure(generation, exception);
+        }
+    }
+
+    private void completeRequest(long generation, AnalysisResponse analysis, Throwable error) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            throw new IllegalStateException("Analysis results must be applied on the EDT.");
+        }
+        lastCompletionOnEdt = true;
+        if (generation != requestGeneration) {
+            return;
+        }
+        activeRequest = null;
+        setLoading(false);
+        if (error != null) {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Groq analysis request completed with an error for request {0}.", generation);
+            showError(userFacingError(error));
+            return;
+        }
+        if (!hasAnalysisContent(analysis)) {
+            LOGGER.log(System.Logger.Level.WARNING,
+                    "Groq analysis request {0} completed without renderable content.", generation);
+            showError("Groq returned an empty analysis. Please try again.");
+            return;
+        }
+        try {
+            LOGGER.log(System.Logger.Level.INFO,
+                    "Groq analysis request {0} received by the controller; rendering on the EDT.",
+                    generation);
+            renderAnalysis(analysis);
+            setStatus("Analysis complete.", false);
+            LOGGER.log(System.Logger.Level.INFO,
+                    "Groq analysis request {0} rendered into the results dashboard.", generation);
+        } catch (RuntimeException exception) {
+            clearResultTabs();
+            showError("Groq returned an incomplete or malformed analysis. Please try again.");
+        }
+    }
+
+    private void finishFailure(long generation, Throwable error) {
+        if (generation != requestGeneration) {
+            return;
+        }
+        activeRequest = null;
+        setLoading(false);
+        showError(userFacingError(error));
+    }
+
+    private String userFacingError(Throwable error) {
+        Throwable cause = rootCause(error);
+        if (cause instanceof GroqService.GroqException groqException) {
+            return groqException.getMessage();
+        }
+        if (cause instanceof CancellationException) {
+            return "The analysis request was canceled.";
+        }
+        return "Groq analysis failed unexpectedly. Please try again.";
     }
 
     private Throwable rootCause(Throwable error) {
         Throwable cause = error;
-        while (cause.getCause() != null
-                && (cause instanceof java.util.concurrent.CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)) {
+        while (cause != null && cause.getCause() != null
+                && (cause instanceof CompletionException
+                || cause instanceof ExecutionException)) {
             cause = cause.getCause();
         }
-        return cause;
+        return cause == null ? error : cause;
     }
 
-    private void setLoading(boolean loading) {
-        analyzeButton.setDisable(loading);
-        clearButton.setDisable(loading);
-        sampleButton.setDisable(loading);
-        languageChoice.setDisable(loading);
-        categoryChoice.setDisable(loading);
-        codeEditor.setDisable(loading);
-        loadingIndicator.setManaged(loading);
-        loadingIndicator.setVisible(loading);
+    private void setLoading(boolean isLoading) {
+        loading = isLoading;
+        analyzeButton.setEnabled(!isLoading);
+        analyzeButton.setText(isLoading ? "Analyzing..." : "Analyze with Groq");
+        clearButton.setEnabled(!isLoading);
+        sampleButton.setEnabled(!isLoading);
+        languageChoice.setEnabled(!isLoading);
+        categoryChoice.setEnabled(!isLoading);
+        codeEditor.setEnabled(!isLoading);
+        resultDashboard.setCopyEnabled(!isLoading);
+        loadingIndicator.setVisible(isLoading);
+        loadingIndicator.setIndeterminate(isLoading);
     }
 
     private void showError(String message) {
-        statusLabel.setText(message == null || message.isBlank()
-                ? "Groq analysis failed. Please try again." : message);
-        if (!statusLabel.getStyleClass().contains("error-message")) {
-            statusLabel.getStyleClass().add("error-message");
-        }
+        setStatus(message == null || message.isBlank()
+                ? "Groq analysis failed. Please try again." : message, true);
+    }
+
+    private void setStatus(String message, boolean error) {
+        statusLabel.setText(message);
+        statusLabel.setForeground(error ? AlgoVisionTheme.ERROR : MUTED_TEXT);
     }
 
     private void clear() {
-        codeEditor.clear();
-        resultSections.getChildren().clear();
-        statusLabel.setText("");
-        statusLabel.getStyleClass().remove("error-message");
+        requestGeneration++;
+        if (activeRequest != null) {
+            activeRequest.cancel(true);
+            activeRequest = null;
+        }
+        setLoading(false);
+        codeEditor.setText("");
+        clearResultTabs();
+        setStatus("Paste code then analyze.", false);
     }
 
     private void loadSample() {
-        codeEditor.setText("Java".equals(languageChoice.getValue()) ? JAVA_SAMPLE : CPP_SAMPLE);
-        statusLabel.setText("");
-        statusLabel.getStyleClass().remove("error-message");
+        codeEditor.setText(switch (String.valueOf(languageChoice.getSelectedItem())) {
+            case "Java" -> JAVA_SAMPLE;
+            case "Python" -> PYTHON_SAMPLE;
+            default -> CPP_SAMPLE;
+        });
+        clearResultTabs();
+        setStatus("Sample loaded. Review it, then analyze.", false);
+        codeEditor.requestFocusInWindow();
+    }
+
+    private void clearResultTabs() {
+        resultDashboard.clear();
+        sourceEditor.setProblemLines(java.util.Set.of());
+    }
+
+    private boolean hasAnalysisContent(AnalysisResponse result) {
+        return result != null && (result.complexityAnalysis() != null
+                || result.bugDetection() != null
+                || result.codeReview() != null
+                || result.optimization() != null
+                || (result.interviewQuestions() != null && !result.interviewQuestions().isEmpty())
+                || result.codeExplanation() != null);
     }
 
     private void renderAnalysis(AnalysisResponse result) {
-        resultSections.getChildren().clear();
-        if (result == null) {
-            showError("Groq returned an empty analysis. Please try again.");
+        String language = String.valueOf(languageChoice.getSelectedItem());
+        resultDashboard.render(result, codeEditor.getText(), language);
+        sourceEditor.setProblemLines(resultDashboard.problemLines());
+    }
+
+    private void copyOptimizedCode(String code) {
+        if (code.isEmpty()) {
             return;
         }
-        AnalysisResponse.ComplexityAnalysis complexity = result.complexityAnalysis();
-        if (complexity != null) {
-            resultSections.getChildren().add(section("1. Complexity Analysis",
-                    "Time: " + text(complexity.timeComplexity()) + "\n"
-                            + "Space: " + text(complexity.spaceComplexity()) + "\n"
-                            + "Best case: " + text(complexity.bestCase()) + "\n"
-                            + "Average case: " + text(complexity.averageCase()) + "\n"
-                            + "Worst case: " + text(complexity.worstCase()) + "\n\n"
-                            + text(complexity.explanation())));
-        }
-        AnalysisResponse.BugDetection bugs = result.bugDetection();
-        if (bugs != null) {
-            List<String> findings = new ArrayList<>();
-            findings.add(text(bugs.summary()));
-            addFindings(findings, "Logical errors", bugs.logicalErrors());
-            addFindings(findings, "Potential bugs", bugs.potentialBugs());
-            addFindings(findings, "Edge cases", bugs.edgeCases());
-            resultSections.getChildren().add(section("2. Bug Detection", String.join("\n\n", findings)));
-        }
-        AnalysisResponse.CodeReview review = result.codeReview();
-        if (review != null) {
-            resultSections.getChildren().add(section("3. Code Review",
-                    text(review.summary()) + "\n\nInefficient operations:\n"
-                            + bullets(review.inefficientOperations())
-                            + "\n\nUnnecessary computations:\n" + bullets(review.unnecessaryComputations())
-                            + "\n\nImplementation choices:\n" + bullets(review.implementationChoices())));
-        }
-        AnalysisResponse.Optimization optimization = result.optimization();
-        if (optimization != null) {
-            resultSections.getChildren().add(section("4. Optimization",
-                    "Suggestions:\n" + bullets(optimization.suggestions())
-                            + "\n\nBefore / after complexity:\n" + text(optimization.beforeAfterComplexity())));
-            resultSections.getChildren().add(codeSection(text(optimization.optimizedCode())));
-        }
-        resultSections.getChildren().add(section("6. Interview Questions",
-                interviewQuestions(result.interviewQuestions())));
-        AnalysisResponse.CodeExplanation explanation = result.codeExplanation();
-        if (explanation != null) {
-            StringBuilder details = new StringBuilder("Approach:\n")
-                    .append(text(explanation.approach()))
-                    .append("\n\nImportant sections:\n");
-            if (explanation.importantSections() != null) {
-                explanation.importantSections().forEach(section -> details
-                        .append("- ").append(text(section.section())).append(": ")
-                        .append(text(section.explanation())).append('\n'));
-            }
-            details.append("\nAlgorithm steps:\n").append(bullets(explanation.algorithmSteps()));
-            resultSections.getChildren().add(section("7. Code Explanation", details.toString()));
+        try {
+            Toolkit.getDefaultToolkit().getSystemClipboard()
+                    .setContents(new StringSelection(code), null);
+            setStatus("Optimized code copied to clipboard.", false);
+        } catch (HeadlessException | IllegalStateException | SecurityException exception) {
+            showError("Could not access the system clipboard.");
         }
     }
 
-    private void addFindings(List<String> output, String title, List<AnalysisResponse.Finding> findings) {
-        output.add(title + ":\n" + (findings == null || findings.isEmpty()
-                ? "None reported." : findings.stream()
-                .map(finding -> "- [" + text(finding.severity()) + "] "
-                        + text(finding.reference()) + ": " + text(finding.description()))
-                .reduce((first, second) -> first + "\n" + second).orElse("None reported.")));
+    private JLabel label(String text, Color color, int style, int size) {
+        JLabel label = new JLabel(text);
+        label.setForeground(color);
+        label.setFont(font(style, size));
+        return label;
     }
 
-    private String interviewQuestions(List<AnalysisResponse.InterviewQuestion> questions) {
-        if (questions == null || questions.isEmpty()) {
-            return "No interview questions were returned.";
-        }
-        return questions.stream().map(question -> "Q: " + text(question.question())
-                        + "\nAnswer: " + text(question.answer())
-                        + "\nConcept: " + text(question.concept()))
-                .reduce((first, second) -> first + "\n\n" + second).orElse("");
+    private Font font(int style, int size) {
+        return AlgoVisionTheme.font(style, size);
     }
 
-    private VBox section(String title, String body) {
-        VBox panel = new VBox(9);
-        panel.getStyleClass().add("analyzer-result-panel");
-        panel.setPadding(new Insets(15));
-        Label heading = new Label(title);
-        heading.getStyleClass().add("panel-heading");
-        Label content = new Label(body);
-        content.getStyleClass().add("analyzer-result-text");
-        content.setWrapText(true);
-        panel.getChildren().addAll(heading, content);
-        return panel;
+    private void styleButton(JButton button, boolean primary) {
+        AlgoVisionTheme.styleButton(button, primary);
     }
 
-    private VBox codeSection(String code) {
-        VBox panel = new VBox(10);
-        panel.getStyleClass().add("analyzer-result-panel");
-        panel.setPadding(new Insets(15));
-        HBox header = new HBox(10);
-        Label heading = new Label("5. Optimized Code");
-        heading.getStyleClass().add("panel-heading");
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-        Button copyButton = new Button("Copy code");
-        copyButton.getStyleClass().add("secondary-button");
-        copyButton.setOnAction(event -> {
-            ClipboardContent clipboardContent = new ClipboardContent();
-            clipboardContent.putString(code);
-            Clipboard.getSystemClipboard().setContent(clipboardContent);
-            statusLabel.setText("Optimized code copied to clipboard.");
-        });
-        header.getChildren().addAll(heading, spacer, copyButton);
-        TextArea optimizedCode = new TextArea(code);
-        optimizedCode.setEditable(false);
-        optimizedCode.setWrapText(false);
-        optimizedCode.setPrefRowCount(12);
-        optimizedCode.getStyleClass().add("analyzer-code-editor");
-        panel.getChildren().addAll(header, optimizedCode);
-        return panel;
+    boolean isLoadingForTesting() {
+        return loading;
     }
 
-    private String bullets(List<String> values) {
-        return values == null || values.isEmpty()
-                ? "None reported." : values.stream().map(value -> "- " + value)
-                .reduce((first, second) -> first + "\n" + second).orElse("None reported.");
+    String statusForTesting() {
+        return statusLabel.getText();
     }
 
-    private String text(String value) {
-        return value == null || value.isBlank() ? "Not provided." : value;
+    String resultTextForTesting(String name) {
+        return resultDashboard.contentForTesting(name);
     }
+
+    String optimizedCodeForTesting() {
+        return resultDashboard.optimizedCode();
+    }
+
+    boolean copyEnabledForTesting() {
+        return resultDashboard.copyEnabledForTesting();
+    }
+
+    boolean lastCompletionOnEdtForTesting() {
+        return lastCompletionOnEdt;
+    }
+
+    JTextPane codeEditorForTesting() {
+        return codeEditor;
+    }
+
+    JComboBox<String> languageChoiceForTesting() {
+        return languageChoice;
+    }
+
+    AiAnalysisDashboard dashboardForTesting() {
+        return resultDashboard;
+    }
+
+    JButton analyzeButtonForTesting() {
+        return analyzeButton;
+    }
+
 }
