@@ -1,90 +1,245 @@
-# AlgoVision
+# 🚀 AlgoVision
 
-AlgoVision is a Java desktop application for learning data structures and algorithms through interactive visualizations and AI-assisted code review. The dark-themed Swing application includes the dashboard, sorting visualizer, graph visualizer, A* pathfinding, algorithm race, and AI Code Analyzer workspaces.
+### Visualize. Understand. Master Algorithms.
 
-## Migration status
+**AlgoVision** is an interactive Java desktop application designed to make learning and understanding Data Structures and Algorithms more intuitive through real-time visualizations, algorithm comparisons, graph exploration, pathfinding, and AI-powered code analysis.
 
-The dashboard and all five workspaces run through the Swing entry point. The project builds with Java 21 and uses Swing for its desktop UI.
+Instead of simply reading algorithm implementations, AlgoVision lets you see how algorithms execute, understand their behavior, compare their performance, and explore the logic behind them.
 
-## Features
+---
 
-### Sorting Visualizer
+## ✨ Features
 
-Visualize these sorting algorithms using a Swing `Graphics2D` bar panel and timer-driven animation:
+### 1. Sorting Visualizer
+Explore popular sorting algorithms through interactive animations.
 
+**Supported Algorithms:**
 - Bubble Sort
 - Selection Sort
 - Insertion Sort
 - Merge Sort
 - Quick Sort
 
-Enter up to 50 comma-separated integers or generate a random array. Start, pause, resume, reset, and adjust animation speed. The workspace reports comparisons, swaps or moves, array size, execution status, and algorithm time and space complexity.
+**Features:**
+- Real-time sorting animations.
+- Adjustable animation speed.
+- Visual representation of comparisons and swaps.
+- Start, pause, and reset controls.
+- Understand how different algorithms manipulate data.
 
-### Algorithm Race Mode
+### 2. Graph Visualizer
 
-Compare two different supported sorting algorithms on identical copies of the same random or comma-separated input. The Swing workspace prepares both runs concurrently off the Event Dispatch Thread, then advances each lane with its own Swing timer. Comparisons, swaps, moves, total operations, execution time, and completion status are tracked independently; the winner is reported only after both lanes finish. Reset or leaving the workspace cancels preparation or stops playback, and pause/resume preserves each lane's current step. Execution time measures step generation and recording before playback, excluding animation, so a single race is not a universal algorithm ranking.
+An interactive environment to create, explore, and visualize graph algorithms.
 
-### Graph Visualizer
+**Supported Algorithms:**
+- Breadth First Search (BFS)
+- Depth First Search (DFS)
+- Dijkstra's Shortest Path Algorithm
 
-Build and explore undirected weighted graphs:
+**Features:**
+- Interactive graph creation.
+- Add and manipulate graph nodes and edges.
+- Generate random graphs.
+- Visualize traversal sequences.
+- Observe shortest-path exploration.
+- Interactive controls and algorithm execution.
 
-- Use explicit Select / Move, Add Node, and Add Edge canvas modes.
-- Drag nodes to reposition them; choose two nodes in Add Edge mode to connect them.
-- Select an edge to update its weight; edge weights appear on the canvas.
-- Delete selected nodes or edges, clear the graph, or generate a random connected graph with unique edges and non-negative weights.
-- Run Breadth-First Search (BFS), Depth-First Search (DFS), or Dijkstra's shortest-path algorithm.
+### 3. A* Pathfinding Visualizer
 
-Select source and destination nodes, then start, pause, resume, or reset playback and adjust its speed. The workspace shows the current operation, traversal order and frontier, visited/examined counts, Dijkstra distances, and the final shortest path. Zero-weight manual edges are supported; negative weights are rejected.
+Understand how the A* search algorithm finds an optimal path between two points.
 
-The Swing graph canvas paints immutable visualization snapshots with `Graphics2D`; mouse interaction is handled separately from rendering, and BFS, DFS, and Dijkstra reuse the existing graph model and algorithm step snapshots. Random graphs use a connected spanning tree plus a bounded set of unique additional edges.
+**Features:**
+- Interactive grid-based environment.
+- Place start and destination points.
+- Create obstacles.
+- Visualize the pathfinding process.
+- Observe explored nodes and the final path.
 
-### AI Code Analyzer
+### 4. Sorting Race 🏁
 
-The Swing AI Code Analyzer sends C++ or Java DSA source code asynchronously to Groq's OpenAI-compatible Chat Completions API. Scrollable result tabs show time and space complexity, bugs and edge cases, code review, optimization suggestions, optimized code, interview questions, and code explanation. The optimized code can be copied to the clipboard. The analyzer requires an internet connection and the existing Groq API configuration.
+Compare two sorting algorithms running simultaneously.
 
-The analyzer reads `GROQ_API_KEY` from `.env` in the project root. Copy `.env.example` to `.env` and replace its placeholder with your key. The `.env` file is ignored by Git. Keep credentials out of source control; move API communication behind a secured backend before distributing the app.
+**Features:**
+- Execute two sorting algorithms side by side.
+- Independent visualizations.
+- Real-time comparison and swap statistics.
+- Individual execution timers.
+- Winner detection.
+- Understand the practical differences between sorting algorithms.
 
-### A* Pathfinding Visualizer
+### 5. AI Code Analyzer 🤖
 
-Use the Pathfinding sidebar workspace to place a start and destination, draw or erase walls with click-and-drag, generate random obstacles, and animate A* on a four-directional grid. The display distinguishes the open frontier, explored cells, the current cell, evaluated neighbors, and the final shortest path. Start, pause, resume, reset, and speed controls are available alongside visited-cell, explored-node, path-length, and execution-status statistics.
+An AI-powered coding assistant integrated into AlgoVision using the Groq API.
 
-A* uses unit movement costs, a priority queue ordered by `f(n) = g(n) + h(n)`, and Manhattan distance as its heuristic. The existing algorithm, grid model, and immutable visualization-step snapshots are reused by the Swing workspace. Search-step generation runs off the Event Dispatch Thread, and a single Swing timer drives rendering.
+Submit your code and receive an AI-generated analysis covering:
 
-## Requirements
+- Time complexity analysis.
+- Space complexity analysis.
+- Potential bugs and logical errors.
+- Edge cases.
+- Code explanations.
+- Optimization suggestions.
+- Improved code suggestions.
+- DSA interview questions and answers.
+
+The goal is not just to identify whether code works, but to understand how it works and how it can be improved.
+
+---
+
+## 🛠️ Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Java 21 | Core application development |
+| Java Swing | Desktop graphical user interface |
+| Java AWT | Graphics and rendering |
+| Graphics2D | Algorithm visualizations |
+| Swing Timer | Animation and event-driven execution |
+| Maven | Dependency management and build automation |
+| Java HttpClient | HTTP communication |
+| Groq API | AI-powered code analysis |
+
+**Note:** AlgoVision uses Java Swing for its desktop interface. It does not require JavaFX.
+
+---
+
+## 📂 Project Structure
+
+```text
+AlgoVision/
+│
+├── src/
+│   ├── main/
+│   │   └── java/
+│   │       └── com/
+│   │           └── algovision/
+│   │               ├── MainApp.java
+│   │               ├── algorithms/
+│   │               ├── ai/
+│   │               ├── controller/
+│   │               ├── graph/
+│   │               ├── pathfinding/
+│   │               └── race/
+│   │
+│   └── test/
+│       └── java/
+│           └── com/
+│               └── algovision/
+│
+├── .env.example
+├── .gitignore
+├── pom.xml
+└── README.md
+```
+
+---
+
+## ⚙️ Installation & Setup
+
+### Prerequisites
+
+Make sure you have installed:
 
 - Java Development Kit (JDK) 21
-- Maven
+- Apache Maven
+- Git
 
-The application uses Swing and the Java 21 standard library for its desktop UI and HTTP client.
+### 1. Clone the repository
 
-## Build and run
+```bash
+git clone https://github.com/thakuradityaas9-glitch/AlgoVision-java.git
+```
 
-From the project directory:
+### 2. Navigate into the project
 
-```shell
-mvn clean compile
+```bash
+cd AlgoVision-java
+```
+
+### 3. Configure the API key
+
+Create a `.env` file in the project root.
+
+Add your Groq API key:
+
+```env
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+You can obtain an API key from the Groq developer platform.
+
+**Important:** Never commit your `.env` file or expose your API key publicly.
+
+### 4. Build the project
+
+```bash
+mvn clean package
+```
+
+### 5. Run AlgoVision
+
+```bash
 mvn exec:java
 ```
 
-## Project structure
+If the Maven execution plugin requires an explicit main class:
 
-```text
-src/
-  main/
-    java/com/algovision/
-      algorithms/       Sorting algorithm implementations
-      ai/               Groq configuration, API service, and analysis response model
-      controller/       Sorting, graph, pathfinding, race, and analyzer controllers
-      graph/algorithms/ BFS, DFS, and Dijkstra implementations
-      graph/model/      Graph, edge, node, and visualization-step models
-      model/            Sorting visualization models
-      pathfinding/      A* algorithm, grid, and step models
-      race/             Sorting race results and execution timing
-      visualization/    Sorting bars, graph canvas, and pathfinding grid
-      MainApp.java      Swing application entry point, dashboard, and navigation
-pom.xml                 Maven configuration
+```bash
+mvn exec:java "-Dexec.mainClass=com.algovision.MainApp"
 ```
 
-## AI Code Analyzer
+---
 
-The Groq integration preserves its configured endpoint, model, request format, response parsing, and prompts. Requests use `HttpClient.sendAsync()`; responses and errors update Swing components on the Event Dispatch Thread.
+## 🧪 Running Tests
+
+Run the complete test suite:
+
+```bash
+mvn clean test
+```
+
+Build the application:
+
+```bash
+mvn clean package
+```
+
+---
+
+## 🧠 What Makes AlgoVision Different?
+
+AlgoVision brings multiple DSA learning experiences into one desktop application.
+
+Rather than treating algorithms as isolated code snippets, it focuses on interactive learning:
+
+- **Visual Learning:** Watch algorithms execute instead of only reading their implementations.
+- **Algorithm Comparison:** Understand differences through simultaneous execution.
+- **Graph Exploration:** Experiment with traversal and shortest-path algorithms.
+- **Pathfinding:** Understand how search algorithms explore a problem space.
+- **AI Assistance:** Get explanations, complexity analysis, debugging insights, and optimization suggestions.
+
+---
+
+## 🔮 Future Scope
+
+Potential future improvements include:
+
+- More sorting algorithms.
+- Additional graph algorithms such as Kruskal's and Prim's.
+- Dynamic Programming visualizations.
+- Data structure visualizations.
+- More advanced algorithm comparisons.
+- Expanded AI-powered DSA assistance.
+- Custom input and dataset support.
+
+---
+
+## 📜 License
+
+This project is currently maintained as a private repository.
+
+---
+
+### ⭐ AlgoVision
+
+**Don't just learn algorithms. Visualize them. Understand them. Master them.**
